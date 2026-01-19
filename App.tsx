@@ -28,8 +28,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('DASHBOARD');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Hàm load dữ liệu từ Database (Local Storage)
-  const loadData = useCallback(() => {
+  const refreshData = useCallback(() => {
     const storedTickets = db.getTickets();
     const storedAssets = db.getAssets();
     const storedUsers = db.getUsers();
@@ -38,64 +37,68 @@ const App: React.FC = () => {
     setAssets(storedAssets);
     setSystemUsers(storedUsers);
 
-    // Cập nhật session user nếu role hoặc info thay đổi ở tab khác
     const savedUser = localStorage.getItem('helpdesk_user');
     if (savedUser) {
       const parsed = JSON.parse(savedUser);
-      const latestUser = storedUsers.find(u => u.id === parsed.id);
-      if (latestUser) {
-        // Chỉ cập nhật nếu thực sự có thay đổi để tránh re-render vô tận
-        if (JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
-          setCurrentUser(latestUser);
-        }
+      const latest = storedUsers.find(u => u.id === parsed.id);
+      if (latest && JSON.stringify(latest) !== JSON.stringify(currentUser)) {
+        setCurrentUser(latest);
       }
     }
   }, [currentUser]);
 
   useEffect(() => {
-    const initializeData = async () => {
-      try {
-        if (!db.isInitialized()) {
-          // Lần đầu chạy: Nạp dữ liệu mẫu
-          db.saveTickets(MOCK_TICKETS);
-          db.saveAssets(INITIAL_ASSETS);
-          db.saveUsers(INITIAL_USERS);
-          db.setInitialized();
+    const initialize = () => {
+      // 1. Kiểm tra xem có dữ liệu đồng bộ từ URL không
+      const urlParams = new URLSearchParams(window.location.search);
+      const syncData = urlParams.get('sync_data');
+
+      if (syncData) {
+        const confirmSync = window.confirm("Phát hiện dữ liệu đồng bộ từ trình duyệt khác. Bạn có muốn khôi phục toàn bộ hệ thống từ nguồn này không?");
+        if (confirmSync) {
+          if (db.importFromEncodedString(syncData)) {
+            // Xóa param trên URL để tránh hỏi lại khi refresh
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
         }
-        loadData();
-      } catch (err) {
-        console.error("Database Init Error", err);
-      } finally {
-        setIsLoading(false);
       }
+
+      // 2. Khởi tạo mặc định nếu là lần đầu
+      if (!db.isInitialized()) {
+        db.saveTickets(MOCK_TICKETS);
+        db.saveAssets(INITIAL_ASSETS);
+        db.saveUsers(INITIAL_USERS);
+        db.setInitialized();
+      }
+      
+      refreshData();
+      setIsLoading(false);
     };
 
-    initializeData();
+    initialize();
 
-    // Lắng nghe thay đổi từ các tab khác
-    window.addEventListener('storage', loadData);
-    // Lắng nghe sự kiện thay đổi nội bộ tab (do dbService bắn ra)
-    window.addEventListener('storage_updated', loadData);
+    db.onSync(() => refreshData());
+    window.addEventListener('local_db_update', refreshData);
+    window.addEventListener('storage', (e) => {
+      if (e.key?.startsWith('helpdesk_db_')) refreshData();
+    });
 
     return () => {
-      window.removeEventListener('storage', loadData);
-      window.removeEventListener('storage_updated', loadData);
+      window.removeEventListener('local_db_update', refreshData);
     };
-  }, [loadData]);
+  }, [refreshData]);
 
   const addToast = (message: string, type: 'info' | 'success' | 'warning' | 'danger' = 'info') => {
     const id = Date.now();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   };
 
   const handleLogin = (u: User) => {
     setCurrentUser(u);
     setCurrentView('DASHBOARD');
     localStorage.setItem('helpdesk_user', JSON.stringify(u));
-    addToast(`Chào mừng ${u.fullName} đã quay lại!`, 'success');
+    addToast(`Chào mừng ${u.fullName}!`, 'success');
   };
 
   const handleLogout = () => {
@@ -105,8 +108,7 @@ const App: React.FC = () => {
   };
 
   const onAddTicket = (newTicket: Ticket) => {
-    const updated = [newTicket, ...tickets];
-    db.saveTickets(updated);
+    db.saveTickets([newTicket, ...tickets]);
     addToast('Gửi yêu cầu thành công!', 'success');
   };
 
@@ -130,23 +132,13 @@ const App: React.FC = () => {
     db.saveTickets(updated);
   };
 
-  const onAddAsset = (asset: Asset) => {
-    const updated = [asset, ...assets];
-    db.saveAssets(updated);
-    addToast('Đã thêm thiết bị', 'success');
-  };
-
-  const onAddUser = (user: User) => {
-    const updated = [...systemUsers, user];
-    db.saveUsers(updated);
-    addToast('Đã thêm người dùng', 'success');
-  };
+  const onAddAsset = (asset: Asset) => db.saveAssets([asset, ...assets]);
+  const onAddUser = (user: User) => db.saveUsers([...systemUsers, user]);
 
   const renderContent = () => {
     if (!currentUser) return null;
     switch (currentView) {
       case 'TICKETS': return <TicketListView tickets={tickets} user={currentUser} onUpdateTicket={onUpdateTicket} onAddComment={onAddComment} />;
-      case 'REPORTS': return <AdminDashboard tickets={tickets} onUpdateTicket={onUpdateTicket} onAddComment={onAddComment} />;
       case 'USERS': return <UserManagement users={systemUsers} currentUser={currentUser} onAddUser={onAddUser} onUpdateUser={() => {}} onDeleteUser={() => {}} />;
       case 'ASSETS': return <AssetManagement assets={assets} users={systemUsers} onAddAsset={onAddAsset} onUpdateAsset={() => {}} onDeleteAsset={() => {}} />;
       case 'DATABASE': return <AdminDatabase />;
@@ -164,11 +156,10 @@ const App: React.FC = () => {
       <Sidebar user={currentUser} onLogout={handleLogout} currentView={currentView} onViewChange={(v) => setCurrentView(v as ViewType)} />
       <main className="flex-1 overflow-y-auto">{renderContent()}</main>
       
-      {/* Dynamic Toasts */}
       <div className="fixed bottom-8 right-8 z-[1000] flex flex-col gap-3">
         {toasts.map(t => (
-          <div key={t.id} className={`px-6 py-4 rounded-2xl shadow-2xl text-white font-bold flex items-center gap-3 animate-in slide-in-from-right ${t.type === 'success' ? 'bg-emerald-600' : 'bg-slate-900'}`}>
-            <i className={`fa-solid ${t.type === 'success' ? 'fa-check' : 'fa-info'}`}></i>
+          <div key={t.id} className={`px-6 py-4 rounded-2xl shadow-2xl text-white font-bold flex items-center gap-3 animate-in slide-in-from-right bg-slate-900 border-l-4 ${t.type === 'success' ? 'border-emerald-500' : 'border-blue-500'}`}>
+            <i className={`fa-solid ${t.type === 'success' ? 'fa-circle-check text-emerald-400' : 'fa-circle-info text-blue-400'}`}></i>
             {t.message}
           </div>
         ))}

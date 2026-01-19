@@ -7,8 +7,14 @@ const STORAGE_KEYS = {
   INITIALIZED: 'helpdesk_db_initialized'
 };
 
+const syncChannel = new BroadcastChannel('helpdesk_realtime_sync');
+
 class DatabaseService {
-  // Kiểm tra xem hệ thống đã từng được khởi tạo chưa
+  private broadcastChange(type: 'TICKETS' | 'USERS' | 'ASSETS' | 'ALL') {
+    syncChannel.postMessage({ type, timestamp: Date.now() });
+    window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type } }));
+  }
+
   isInitialized(): boolean {
     return localStorage.getItem(STORAGE_KEYS.INITIALIZED) === 'true';
   }
@@ -17,7 +23,67 @@ class DatabaseService {
     localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
   }
 
-  // Lấy toàn bộ dữ liệu để backup
+  getTickets(): Ticket[] {
+    const data = localStorage.getItem(STORAGE_KEYS.TICKETS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  saveTickets(tickets: Ticket[]) {
+    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(tickets));
+    this.broadcastChange('TICKETS');
+  }
+
+  getUsers(): User[] {
+    const data = localStorage.getItem(STORAGE_KEYS.USERS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  saveUsers(users: User[]) {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    this.broadcastChange('USERS');
+  }
+
+  getAssets(): Asset[] {
+    const data = localStorage.getItem(STORAGE_KEYS.ASSETS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  saveAssets(assets: Asset[]) {
+    localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(assets));
+    this.broadcastChange('ASSETS');
+  }
+
+  // Tạo mã đồng bộ hóa để gửi qua trình duyệt khác
+  generateSyncLink(): string {
+    const data = {
+      tickets: this.getTickets(),
+      users: this.getUsers(),
+      assets: this.getAssets()
+    };
+    const jsonStr = JSON.stringify(data);
+    const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+    const url = new URL(window.location.href);
+    url.searchParams.set('sync_data', base64);
+    return url.toString();
+  }
+
+  // Nhập dữ liệu từ chuỗi nén
+  importFromEncodedString(encoded: string): boolean {
+    try {
+      const jsonStr = decodeURIComponent(escape(atob(encoded)));
+      const data = JSON.parse(jsonStr);
+      if (data.tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets));
+      if (data.users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users));
+      if (data.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(data.assets));
+      this.setInitialized();
+      this.broadcastChange('ALL');
+      return true;
+    } catch (e) {
+      console.error("Sync Error", e);
+      return false;
+    }
+  }
+
   exportDB() {
     const data = {
       tickets: this.getTickets(),
@@ -33,7 +99,6 @@ class DatabaseService {
     link.click();
   }
 
-  // Nạp dữ liệu từ file backup
   importDB(jsonData: string) {
     try {
       const data = JSON.parse(jsonData);
@@ -41,51 +106,21 @@ class DatabaseService {
       if (data.users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users));
       if (data.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(data.assets));
       this.setInitialized();
+      this.broadcastChange('ALL');
       return true;
     } catch (e) {
-      console.error("Import failed", e);
       return false;
     }
   }
 
-  // Quản lý Tickets
-  getTickets(): Ticket[] {
-    const data = localStorage.getItem(STORAGE_KEYS.TICKETS);
-    return data ? JSON.parse(data) : [];
-  }
-
-  saveTickets(tickets: Ticket[]) {
-    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(tickets));
-    // Phát sự kiện thủ công để các tab cùng trình duyệt nhận biết (localStorage event chỉ bắn cho tab khác)
-    window.dispatchEvent(new Event('storage_updated'));
-  }
-
-  // Quản lý Users
-  getUsers(): User[] {
-    const data = localStorage.getItem(STORAGE_KEYS.USERS);
-    return data ? JSON.parse(data) : [];
-  }
-
-  saveUsers(users: User[]) {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-    window.dispatchEvent(new Event('storage_updated'));
-  }
-
-  // Quản lý Assets
-  getAssets(): Asset[] {
-    const data = localStorage.getItem(STORAGE_KEYS.ASSETS);
-    return data ? JSON.parse(data) : [];
-  }
-
-  saveAssets(assets: Asset[]) {
-    localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(assets));
-    window.dispatchEvent(new Event('storage_updated'));
-  }
-
-  // Xóa sạch DB
   clearDB() {
     Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+    this.broadcastChange('ALL');
     window.location.reload();
+  }
+
+  onSync(callback: (data: any) => void) {
+    syncChannel.onmessage = (event) => callback(event.data);
   }
 }
 
