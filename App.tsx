@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, UserRole, Ticket, TicketStatus, Comment, Asset, Attachment } from './types';
 import { INITIAL_USERS, MOCK_TICKETS, INITIAL_ASSETS } from './constants';
 import { db } from './services/dbService';
@@ -28,45 +28,41 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('DASHBOARD');
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Hàm load dữ liệu từ Database (Local Storage)
+  const loadData = useCallback(() => {
+    const storedTickets = db.getTickets();
+    const storedAssets = db.getAssets();
+    const storedUsers = db.getUsers();
+
+    setTickets(storedTickets);
+    setAssets(storedAssets);
+    setSystemUsers(storedUsers);
+
+    // Cập nhật session user nếu role hoặc info thay đổi ở tab khác
+    const savedUser = localStorage.getItem('helpdesk_user');
+    if (savedUser) {
+      const parsed = JSON.parse(savedUser);
+      const latestUser = storedUsers.find(u => u.id === parsed.id);
+      if (latestUser) {
+        // Chỉ cập nhật nếu thực sự có thay đổi để tránh re-render vô tận
+        if (JSON.stringify(latestUser) !== JSON.stringify(currentUser)) {
+          setCurrentUser(latestUser);
+        }
+      }
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     const initializeData = async () => {
       try {
-        // Load Tickets
-        const storedTickets = db.getTickets();
-        if (storedTickets.length > 0) {
-          setTickets(storedTickets);
-        } else {
+        if (!db.isInitialized()) {
+          // Lần đầu chạy: Nạp dữ liệu mẫu
           db.saveTickets(MOCK_TICKETS);
-          setTickets(MOCK_TICKETS);
-        }
-
-        // Load Assets
-        const storedAssets = db.getAssets();
-        if (storedAssets.length > 0) {
-          setAssets(storedAssets);
-        } else {
           db.saveAssets(INITIAL_ASSETS);
-          setAssets(INITIAL_ASSETS);
-        }
-
-        // Load Users
-        const storedUsers = db.getUsers();
-        let activeUsers = INITIAL_USERS;
-        if (storedUsers.length > 0) {
-          activeUsers = storedUsers;
-          setSystemUsers(storedUsers);
-        } else {
           db.saveUsers(INITIAL_USERS);
-          setSystemUsers(INITIAL_USERS);
+          db.setInitialized();
         }
-
-        // Session Check
-        const savedUser = localStorage.getItem('helpdesk_user');
-        if (savedUser) {
-          const parsed = JSON.parse(savedUser);
-          const valid = activeUsers.find(u => u.id === parsed.id);
-          if (valid) setCurrentUser(valid);
-        }
+        loadData();
       } catch (err) {
         console.error("Database Init Error", err);
       } finally {
@@ -75,7 +71,17 @@ const App: React.FC = () => {
     };
 
     initializeData();
-  }, []);
+
+    // Lắng nghe thay đổi từ các tab khác
+    window.addEventListener('storage', loadData);
+    // Lắng nghe sự kiện thay đổi nội bộ tab (do dbService bắn ra)
+    window.addEventListener('storage_updated', loadData);
+
+    return () => {
+      window.removeEventListener('storage', loadData);
+      window.removeEventListener('storage_updated', loadData);
+    };
+  }, [loadData]);
 
   const addToast = (message: string, type: 'info' | 'success' | 'warning' | 'danger' = 'info') => {
     const id = Date.now();
@@ -100,14 +106,12 @@ const App: React.FC = () => {
 
   const onAddTicket = (newTicket: Ticket) => {
     const updated = [newTicket, ...tickets];
-    setTickets(updated);
     db.saveTickets(updated);
     addToast('Gửi yêu cầu thành công!', 'success');
   };
 
   const onUpdateTicket = (ticketId: string, updates: Partial<Ticket>) => {
     const updated = tickets.map(t => t.id === ticketId ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t);
-    setTickets(updated);
     db.saveTickets(updated);
   };
 
@@ -123,20 +127,17 @@ const App: React.FC = () => {
       attachments
     };
     const updated = tickets.map(t => t.id === ticketId ? { ...t, comments: [...(t.comments || []), newComment], updatedAt: new Date().toISOString() } : t);
-    setTickets(updated);
     db.saveTickets(updated);
   };
 
   const onAddAsset = (asset: Asset) => {
     const updated = [asset, ...assets];
-    setAssets(updated);
     db.saveAssets(updated);
     addToast('Đã thêm thiết bị', 'success');
   };
 
   const onAddUser = (user: User) => {
     const updated = [...systemUsers, user];
-    setSystemUsers(updated);
     db.saveUsers(updated);
     addToast('Đã thêm người dùng', 'success');
   };
