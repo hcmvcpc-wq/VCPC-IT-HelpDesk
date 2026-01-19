@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { User } from '../types.ts';
+import { User } from '../types';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
@@ -18,7 +17,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, users }) => {
     setError(null);
     setIsSubmitting(true);
 
-    // Xử lý đăng nhập ngay lập tức để tránh lỗi timeout hoặc race condition
     const normalizedUser = username.trim().toLowerCase();
     const user = users.find(u => u.username.toLowerCase() === normalizedUser && u.password === password);
     
