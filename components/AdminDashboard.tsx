@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Ticket, TicketStatus, TicketPriority } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -22,15 +22,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
   const [activeTicketForChat, setActiveTicketForChat] = useState<Ticket | null>(null);
   const [activeTicketForDetail, setActiveTicketForDetail] = useState<Ticket | null>(null);
 
-  const currentUser = JSON.parse(localStorage.getItem('helpdesk_user') || '{}');
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('helpdesk_user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
 
   const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#14b8a6', '#f43f5e'];
-  const PRIORITY_COLORS: Record<string, string> = {
-    [TicketPriority.CRITICAL]: '#ef4444',
-    [TicketPriority.HIGH]: '#f97316',
-    [TicketPriority.MEDIUM]: '#3b82f6',
-    [TicketPriority.LOW]: '#94a3b8'
-  };
 
   const stats = useMemo(() => {
     const total = tickets.length;
@@ -86,10 +86,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
     }
     return data;
   }, [tickets]);
-
-  const filteredTickets = useMemo(() => {
-    return filter === 'ALL' ? tickets.slice(0, 10) : tickets.filter(t => t.status === filter).slice(0, 10);
-  }, [tickets, filter]);
 
   const handleSummarize = async () => {
     if (tickets.length === 0) return;
@@ -217,7 +213,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
            </div>
       </div>
 
-      {activeTicketForChat && <TicketChatModal ticket={activeTicketForChat} currentUser={currentUser} onClose={() => setActiveTicketForChat(null)} onSendMessage={onAddComment} />}
+      {activeTicketForChat && <TicketChatModal ticket={activeTicketForChat} currentUser={currentUser as any} onClose={() => setActiveTicketForChat(null)} onSendMessage={onAddComment} />}
       {activeTicketForDetail && <TicketDetailModal ticket={activeTicketForDetail} onClose={() => setActiveTicketForDetail(null)} />}
     </div>
   );

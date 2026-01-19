@@ -1,10 +1,19 @@
-
 import { GoogleGenAI } from "@google/genai";
 
-// Always use named parameter for apiKey and obtain it directly from process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize AI safely to prevent top-level module errors
+const getAIInstance = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    console.warn("Gemini API Key is missing. AI features will be disabled.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
+const ai = getAIInstance();
 
 export const getAITicketResponse = async (title: string, description: string) => {
+  if (!ai) return "Cảm ơn bạn. Yêu cầu đã được ghi nhận.";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -14,28 +23,28 @@ export const getAITicketResponse = async (title: string, description: string) =>
       
       Provide a brief, professional initial response from IT helpdesk, suggesting possible quick fixes if applicable. Keep it under 100 words.`,
     });
-    // Use the .text property directly
     return response.text;
   } catch (error) {
     console.error("Gemini API Error:", error);
-    return "Thank you for your ticket. Our IT team has been notified and will review your request shortly.";
+    return "Cảm ơn bạn. Đội ngũ IT sẽ xem xét yêu cầu của bạn sớm nhất có thể.";
   }
 };
 
 export const summarizeTickets = async (ticketsJson: string) => {
+  if (!ai) return "Tính năng tóm tắt hiện không khả dụng.";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Analyze these IT helpdesk tickets and provide a high-level executive summary of trends, common issues, and performance: ${ticketsJson}`,
     });
-    // Use the .text property directly
     return response.text;
   } catch (error) {
-    return "Summary generation currently unavailable.";
+    return "Không thể tạo tóm tắt lúc này.";
   }
 };
 
 export const chatWithAI = async (history: {role: 'user' | 'model', parts: {text: string}[]}[], message: string) => {
+  if (!ai) return "Xin lỗi, trợ lý ảo hiện đang ngoại tuyến.";
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -52,7 +61,6 @@ export const chatWithAI = async (history: {role: 'user' | 'model', parts: {text:
         temperature: 0.7,
       },
     });
-    // Use the .text property directly
     return response.text;
   } catch (error) {
     console.error("AI Chat Error:", error);
