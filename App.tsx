@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, UserRole, Ticket, TicketStatus, Comment, Asset, Attachment } from './types.ts';
-import { INITIAL_USERS, MOCK_TICKETS, INITIAL_ASSETS } from './constants.tsx';
-import LoginPage from './components/LoginPage.tsx';
-import AdminDashboard from './components/AdminDashboard.tsx';
-import UserDashboard from './components/UserDashboard.tsx';
-import Sidebar from './components/Sidebar.tsx';
-import TicketListView from './components/TicketListView.tsx';
-import UserManagement from './components/UserManagement.tsx';
-import AssetManagement from './components/AssetManagement.tsx';
+import { User, UserRole, Ticket, TicketStatus, Comment, Asset, Attachment } from './types';
+import { INITIAL_USERS, MOCK_TICKETS, INITIAL_ASSETS } from './constants';
+import LoginPage from './components/LoginPage';
+import AdminDashboard from './components/AdminDashboard';
+import UserDashboard from './components/UserDashboard';
+import Sidebar from './components/Sidebar';
+import TicketListView from './components/TicketListView';
+import UserManagement from './components/UserManagement';
+import AssetManagement from './components/AssetManagement';
 
 type ViewType = 'DASHBOARD' | 'TICKETS' | 'REPORTS' | 'USERS' | 'ASSETS';
 

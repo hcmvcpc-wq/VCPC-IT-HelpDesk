@@ -1,5 +1,5 @@
 
-import { Ticket, TicketStatus, TicketPriority, User, UserRole, Asset, AssetStatus } from './types.ts';
+import { Ticket, TicketStatus, TicketPriority, User, UserRole, Asset, AssetStatus } from './types';
 
 export const INITIAL_USERS: User[] = [
   { id: 'u1', username: 'admin', password: '123', fullName: 'Quản Trị Viên', role: UserRole.ADMIN, department: 'IT' },
@@ -78,4 +78,4 @@ export const MOCK_TICKETS: Ticket[] = [
   }
 ];
 
-export const LOCATIONS = SUBSIDIARIES; 
+export const LOCATIONS = SUBSIDIARIES;
