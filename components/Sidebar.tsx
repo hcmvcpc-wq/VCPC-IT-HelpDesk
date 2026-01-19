@@ -78,17 +78,17 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, currentView, onViewCh
                 <i className="fa-solid fa-users-gears w-5"></i>
                 <span className="font-bold text-sm">Người dùng</span>
               </button>
-              
+
               <button
-                onClick={() => onViewChange('REPORTS')}
+                onClick={() => onViewChange('DATABASE')}
                 className={`w-full flex items-center space-x-3 p-3.5 rounded-xl transition-all duration-200 border ${
-                  currentView === 'REPORTS'
+                  currentView === 'DATABASE'
                     ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/40'
                     : 'hover:bg-slate-800 hover:text-white border-transparent text-slate-400'
                 }`}
               >
-                <i className="fa-solid fa-chart-pie w-5"></i>
-                <span className="font-bold text-sm">Báo cáo thống kê</span>
+                <i className="fa-solid fa-database w-5"></i>
+                <span className="font-bold text-sm">Cơ sở dữ liệu</span>
               </button>
             </div>
           )}
