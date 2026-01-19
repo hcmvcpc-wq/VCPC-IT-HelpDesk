@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo } from 'react';
-import { Ticket, TicketStatus, TicketPriority, User, UserRole } from '../types.ts';
-import TicketChatModal from './TicketChatModal.tsx';
-import TicketDetailModal from './TicketDetailModal.tsx';
+import { Ticket, TicketStatus, User, UserRole } from '../types';
+import TicketChatModal from './TicketChatModal';
+import TicketDetailModal from './TicketDetailModal';
 
 interface TicketListViewProps {
   tickets: Ticket[];
@@ -63,31 +62,20 @@ const TicketListView: React.FC<TicketListViewProps> = ({ tickets, user, onUpdate
               {displayTickets.map(t => (
                 <tr key={t.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-8 py-6">
-                    <p 
-                      onClick={() => setActiveDetailTicket(t)}
-                      className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition cursor-pointer"
-                    >
-                      {t.title}
-                    </p>
+                    <p onClick={() => setActiveDetailTicket(t)} className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition cursor-pointer">{t.title}</p>
                     <p className="text-[10px] text-slate-400 font-mono mt-1">ID: {t.id} • {t.creatorName}</p>
                   </td>
                   <td className="px-8 py-6 text-center">
                     <span className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border ${t.status === 'OPEN' ? 'bg-amber-50 text-amber-600 border-amber-100' : t.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>{t.status}</span>
                   </td>
                   <td className="px-8 py-6 text-center">
-                    <button 
-                      onClick={() => setActiveChatTicket(t)}
-                      className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95 group"
-                    >
+                    <button onClick={() => setActiveChatTicket(t)} className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-blue-600 hover:text-white transition-all transform active:scale-95">
                       <i className="fa-solid fa-comments"></i>
                       <span className="text-[10px] font-black uppercase">Chat {t.comments?.length ? `(${t.comments.length})` : ''}</span>
                     </button>
                   </td>
                   <td className="px-8 py-6 text-center">
-                    <button 
-                      onClick={() => setActiveDetailTicket(t)}
-                      className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-900 hover:text-white transition-all transform active:scale-95"
-                    >
+                    <button onClick={() => setActiveDetailTicket(t)} className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-900 hover:text-white transition-all">
                       <i className="fa-solid fa-eye text-xs"></i>
                     </button>
                   </td>
@@ -108,21 +96,8 @@ const TicketListView: React.FC<TicketListViewProps> = ({ tickets, user, onUpdate
         </div>
       </div>
 
-      {activeChatTicket && (
-        <TicketChatModal 
-          ticket={activeChatTicket}
-          currentUser={user}
-          onClose={() => setActiveChatTicket(null)}
-          onSendMessage={onAddComment}
-        />
-      )}
-
-      {activeDetailTicket && (
-        <TicketDetailModal 
-          ticket={activeDetailTicket}
-          onClose={() => setActiveDetailTicket(null)}
-        />
-      )}
+      {activeChatTicket && <TicketChatModal ticket={activeChatTicket} currentUser={user} onClose={() => setActiveChatTicket(null)} onSendMessage={onAddComment} />}
+      {activeDetailTicket && <TicketDetailModal ticket={activeDetailTicket} onClose={() => setActiveDetailTicket(null)} />}
     </div>
   );
 };

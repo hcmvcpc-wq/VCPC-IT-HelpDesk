@@ -1,11 +1,10 @@
-
 import React, { useState, useRef } from 'react';
-import { User, Ticket, TicketStatus, TicketPriority, Asset, Attachment } from '../types.ts';
-import { CATEGORIES, SUBSIDIARIES, DEPARTMENTS } from '../constants.tsx';
-import { getAITicketResponse } from '../services/geminiService.ts';
-import TicketChatModal from './TicketChatModal.tsx';
-import TicketDetailModal from './TicketDetailModal.tsx';
-import AISupportWidget from './AISupportWidget.tsx';
+import { User, Ticket, TicketStatus, TicketPriority, Asset, Attachment } from '../types';
+import { CATEGORIES, SUBSIDIARIES, DEPARTMENTS } from '../constants';
+import { getAITicketResponse } from '../services/geminiService';
+import TicketChatModal from './TicketChatModal';
+import TicketDetailModal from './TicketDetailModal';
+import AISupportWidget from './AISupportWidget';
 
 interface UserDashboardProps {
   user: User;
@@ -39,7 +38,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
     const files = e.target.files;
     if (!files) return;
 
-    // Fix: Explicitly type 'file' as 'File' to resolve 'unknown' property access errors
     Array.from(files).forEach((file: File) => {
       if (file.size > 2 * 1024 * 1024) {
         alert(`Tệp ${file.name} quá lớn (tối đa 2MB)`);
@@ -108,7 +106,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
 
   return (
     <div className="p-8 max-w-6xl mx-auto pb-20 page-enter">
-      {/* Welcome Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-tight">Chào bạn, {user.fullName.split(' ').pop()}!</h1>
@@ -123,7 +120,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
         </button>
       </div>
 
-      {/* Assets Section */}
       <div className="mb-14">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-xs font-black text-slate-400 tracking-[0.2em] uppercase">Thiết bị IT được cấp cho bạn</h2>
@@ -160,16 +156,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
                      {asset.status.replace('_', ' ')}
                    </span>
                 </div>
-                <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                   <i className="fa-solid fa-shield-halved text-6xl"></i>
-                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* History Section */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-xs font-black text-slate-400 tracking-[0.2em] uppercase">Lịch sử hỗ trợ gần đây</h2>
@@ -213,12 +205,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
-                  {t.attachments && t.attachments.length > 0 && (
-                    <span className="flex items-center text-slate-400 text-xs font-bold bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-                      <i className="fa-solid fa-paperclip mr-2"></i>
-                      {t.attachments.length} đính kèm
-                    </span>
-                  )}
                   <button 
                     onClick={() => setActiveDetailTicket(t)}
                     className="px-6 py-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-900 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest"
@@ -241,10 +227,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
                   <div className="flex items-center space-x-2">
                     <i className="fa-solid fa-layer-group text-slate-300"></i>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.category}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <i className="fa-solid fa-building text-slate-300"></i>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t.subsidiary}</span>
                   </div>
                 </div>
                 <button 
@@ -303,53 +285,25 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
                 <textarea required rows={3} value={newTicket.description} onChange={e => setNewTicket({...newTicket, description: e.target.value})} className="w-full px-5 py-3 rounded-xl border-2 border-slate-100 focus:border-blue-500 outline-none font-medium shadow-sm" placeholder="Mô tả cụ thể triệu chứng lỗi..."></textarea>
               </div>
 
-              {/* Attachments Section */}
               <div className="space-y-3">
                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1 flex justify-between items-center">
                   <span>Ảnh / Video minh họa (Tối đa 2MB)</span>
                   <span className="text-blue-600">{attachments.length} tệp đã chọn</span>
                 </label>
-                
                 <div className="grid grid-cols-4 gap-3">
                   {attachments.map(att => (
                     <div key={att.id} className="relative group rounded-xl overflow-hidden aspect-square border-2 border-slate-100 bg-slate-50">
-                      {att.type.startsWith('image') ? (
-                        <img src={att.data} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-blue-500">
-                          <i className="fa-solid fa-file-video text-xl"></i>
-                          <span className="text-[8px] font-bold uppercase mt-1">Video</span>
-                        </div>
-                      )}
-                      <button 
-                        type="button"
-                        onClick={() => removeAttachment(att.id)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg"
-                      >
-                        <i className="fa-solid fa-xmark text-[10px]"></i>
-                      </button>
+                      {att.type.startsWith('image') ? <img src={att.data} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center text-blue-500"><i className="fa-solid fa-file-video text-xl"></i></div>}
+                      <button type="button" onClick={() => removeAttachment(att.id)} className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"><i className="fa-solid fa-xmark text-[10px]"></i></button>
                     </div>
                   ))}
-                  
                   {attachments.length < 4 && (
-                    <button 
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="aspect-square rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all flex flex-col items-center justify-center text-slate-400 hover:text-blue-600"
-                    >
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="aspect-square rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all flex flex-col items-center justify-center text-slate-400 hover:text-blue-600">
                       <i className="fa-solid fa-cloud-arrow-up text-xl mb-1"></i>
-                      <span className="text-[8px] font-black uppercase">Thêm tệp</span>
                     </button>
                   )}
                 </div>
-                <input 
-                  type="file" 
-                  multiple 
-                  accept="image/*,video/*" 
-                  className="hidden" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange}
-                />
+                <input type="file" multiple accept="image/*,video/*" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
               </div>
 
               <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-5 rounded-2xl shadow-xl shadow-blue-600/20 transition-all transform active:scale-[0.98]">
@@ -360,23 +314,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ user, tickets, assets = [
         </div>
       )}
 
-      {activeChatTicket && (
-        <TicketChatModal 
-          ticket={activeChatTicket}
-          currentUser={user}
-          onClose={() => setActiveChatTicket(null)}
-          onSendMessage={onAddComment}
-        />
-      )}
-
-      {activeDetailTicket && (
-        <TicketDetailModal 
-          ticket={activeDetailTicket}
-          onClose={() => setActiveDetailTicket(null)}
-        />
-      )}
-
-      {/* AI Assistant Widget */}
+      {activeChatTicket && <TicketChatModal ticket={activeChatTicket} currentUser={user} onClose={() => setActiveChatTicket(null)} onSendMessage={onAddComment} />}
+      {activeDetailTicket && <TicketDetailModal ticket={activeDetailTicket} onClose={() => setActiveDetailTicket(null)} />}
       <AISupportWidget />
     </div>
   );
