@@ -52,28 +52,32 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initialize = async () => {
-      // 1. Kiểm tra URL Auto-Connect (Ưu tiên cao nhất)
       const urlParams = new URLSearchParams(window.location.search);
-      const connectBase64 = urlParams.get('connect');
       
+      // 1. Tự động nạp từ URL JSON trực tiếp (?data_url=...)
+      const dataUrl = urlParams.get('data_url');
+      if (dataUrl) {
+        db.setRemoteJsonUrl(dataUrl);
+        await db.syncFromRemoteUrl();
+      }
+
+      // 2. Tự động kết nối Cloud Bridge (?connect=...)
+      const connectBase64 = urlParams.get('connect');
       if (connectBase64) {
         try {
           const decodedUrl = atob(connectBase64);
           if (decodedUrl.startsWith('http')) {
             db.setCloudUrl(decodedUrl);
             await db.syncWithCloud();
-            // Xóa tham số URL để link sạch sẽ
-            window.history.replaceState({}, document.title, window.location.pathname);
           }
-        } catch (e) { console.error("Auto-connect failed"); }
+        } catch (e) {}
       }
 
-      // 2. Nếu đã có Cloud URL từ trước, tự động tải dữ liệu
-      if (db.getCloudUrl()) {
-        await db.syncWithCloud();
-      }
+      // 3. Nếu đã có cấu hình Cloud/Remote, ưu tiên tải lại để có dữ liệu mới nhất
+      if (db.getCloudUrl()) await db.syncWithCloud();
+      else if (db.getRemoteJsonUrl()) await db.syncFromRemoteUrl();
 
-      // 3. Khởi tạo dữ liệu mẫu CHỈ KHI không có Cloud và chưa khởi tạo bao giờ
+      // 4. Khởi tạo dữ liệu mẫu nếu hệ thống hoàn toàn trống
       if (!db.isInitialized()) {
         db.saveTickets(MOCK_TICKETS);
         db.saveAssets(INITIAL_ASSETS);
@@ -81,15 +85,20 @@ const App: React.FC = () => {
         db.setInitialized();
       }
       
+      // Làm sạch URL
+      if (urlParams.has('connect') || urlParams.has('data_url')) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
       refreshData();
       setIsLoading(false);
     };
 
     initialize();
 
-    // 4. Polling Cloud định kỳ
     const cloudPollInterval = setInterval(async () => {
       if (db.getCloudUrl()) await db.syncWithCloud();
+      else if (db.getRemoteJsonUrl()) await db.syncFromRemoteUrl();
     }, 60000);
 
     db.onSync(() => refreshData());
@@ -110,7 +119,7 @@ const App: React.FC = () => {
   const handleLogin = (u: User) => {
     setCurrentUser(u);
     localStorage.setItem('helpdesk_user', JSON.stringify(u));
-    db.logAction(u.id, u.fullName, 'LOGIN', 'Đăng nhập vào hệ thống.', 'SUCCESS');
+    db.logAction(u.id, u.fullName, 'LOGIN', 'Đăng nhập thành công.', 'SUCCESS');
     addToast(`Chào mừng ${u.fullName}!`, 'success');
   };
 
@@ -155,7 +164,6 @@ const App: React.FC = () => {
   };
 
   if (isLoading) return <div className="h-screen flex items-center justify-center bg-slate-100"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>;
-
   if (!currentUser) return <LoginPage onLogin={handleLogin} users={systemUsers} />;
 
   return (

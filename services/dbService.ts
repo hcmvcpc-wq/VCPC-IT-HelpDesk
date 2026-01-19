@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   LOGS: 'helpdesk_db_logs',
   INITIALIZED: 'helpdesk_db_initialized',
   CLOUD_URL: 'helpdesk_cloud_sync_url',
+  REMOTE_JSON_URL: 'helpdesk_remote_json_url',
   LAST_SYNC: 'helpdesk_last_sync_time'
 };
 
@@ -31,14 +32,14 @@ class DatabaseService {
       if (type === 'USERS' || type === 'ALL') await pushToCloud(cloudUrl, 'Users', this.getUsers());
       localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
     } catch (e) {
-      console.warn("Cloud push failed (likely no-cors or offline), data remains local.");
+      console.warn("Cloud push failed, data saved locally.");
     }
   }
 
   setCloudUrl(url: string) {
     if (!url) return;
     localStorage.setItem(STORAGE_KEYS.CLOUD_URL, url);
-    localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true'); // Đánh dấu đã có nguồn dữ liệu
+    localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
     this.broadcastChange('ALL');
   }
 
@@ -46,12 +47,38 @@ class DatabaseService {
     return localStorage.getItem(STORAGE_KEYS.CLOUD_URL);
   }
 
+  setRemoteJsonUrl(url: string) {
+    localStorage.setItem(STORAGE_KEYS.REMOTE_JSON_URL, url);
+    this.syncFromRemoteUrl();
+  }
+
+  getRemoteJsonUrl(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.REMOTE_JSON_URL);
+  }
+
   getLastSyncTime(): string | null {
     return localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
   }
 
   /**
-   * Tự động đồng bộ toàn diện từ Cloud
+   * Nạp dữ liệu từ một URL JSON tĩnh (GitHub, Gist, v.v.)
+   */
+  async syncFromRemoteUrl(): Promise<boolean> {
+    const url = this.getRemoteJsonUrl();
+    if (!url) return false;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      return this.importDB(JSON.stringify(data));
+    } catch (e) {
+      console.error("Failed to fetch remote JSON", e);
+      return false;
+    }
+  }
+
+  /**
+   * Đồng bộ từ Google Sheets (Two-way Bridge)
    */
   async syncWithCloud(): Promise<boolean> {
     const url = this.getCloudUrl();
@@ -145,13 +172,30 @@ class DatabaseService {
     this.broadcastChange('ASSETS');
   }
 
-  /**
-   * Tạo link chia sẻ để trình duyệt khác tự động kết nối Cloud
-   */
+  importDB(jsonStr: string): boolean {
+    try {
+      const data = JSON.parse(jsonStr);
+      let hasChange = false;
+      if (data.tickets) { localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets)); hasChange = true; }
+      if (data.users) { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users)); hasChange = true; }
+      if (data.assets) { localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(data.assets)); hasChange = true; }
+      if (data.logs) { localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(data.logs)); hasChange = true; }
+      
+      if (hasChange) {
+        this.setInitialized();
+        localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+        this.broadcastChange('ALL');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
   generateAutoConnectLink(): string {
     const cloudUrl = this.getCloudUrl();
     if (!cloudUrl) return window.location.origin + window.location.pathname;
-    
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('connect', btoa(cloudUrl));
     return url.toString();
