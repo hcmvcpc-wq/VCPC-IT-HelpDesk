@@ -1,0 +1,8 @@
+{
+  "name": "VCPC IT Helpdesk",
+  "description": "A comprehensive IT Helpdesk management system with separate User/Admin portals, AI-powered support, Excel data export, and interactive statistical reporting.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
