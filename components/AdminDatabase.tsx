@@ -11,38 +11,38 @@ const AdminDatabase: React.FC = () => {
   const [copying, setCopying] = useState(false);
   const [cloudUrl, setCloudUrl] = useState(db.getCloudUrl() || '');
   const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState(db.getLastSyncTime());
 
   useEffect(() => {
     const interval = setInterval(() => setIsLive(prev => !prev), 2000);
-    return () => clearInterval(interval);
+    const syncListener = () => setLastSync(db.getLastSyncTime());
+    window.addEventListener('local_db_update', syncListener);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('local_db_update', syncListener);
+    };
   }, []);
 
   const handleSaveCloudUrl = () => {
+    if (!cloudUrl.startsWith('https://script.google.com')) {
+      alert("Vui lòng nhập URL Web App hợp lệ từ Google Apps Script.");
+      return;
+    }
     db.setCloudUrl(cloudUrl);
-    alert("Đã lưu URL Cloud! Hệ thống sẽ bắt đầu tự động đồng bộ.");
+    alert("Đã kết nối Cloud! Dữ liệu sẽ tự động đẩy lên và đồng bộ ngầm mỗi phút.");
   };
 
   const handlePullData = async () => {
     setSyncing(true);
     const success = await db.syncWithCloud();
     setSyncing(false);
-    if (success) alert("Đồng bộ dữ liệu từ Cloud thành công!");
-    else alert("Không thể lấy dữ liệu từ Cloud. Vui lòng kiểm tra lại URL Web App.");
-  };
-
-  const handleExportJSON = () => db.exportDB();
-
-  const handleExportCSV = (type: 'Tickets' | 'Assets' | 'Users') => {
-    let data: any[] = [];
-    if (type === 'Tickets') data = db.getTickets();
-    if (type === 'Assets') data = db.getAssets();
-    if (type === 'Users') data = db.getUsers();
-    exportCSVForSheets(data, `it_helpdesk_${type.toLowerCase()}_google_sheets`);
-  };
-
-  const handleDownloadGAS = () => {
-    const script = generateGoogleAppsScript();
-    downloadScriptFile(script);
+    if (success) {
+      setLastSync(db.getLastSyncTime());
+      alert("Đồng bộ dữ liệu thành công!");
+    } else {
+      alert("Đồng bộ thất bại. Kiểm tra lại URL hoặc quyền truy cập của Web App.");
+    }
   };
 
   return (
@@ -50,7 +50,7 @@ const AdminDatabase: React.FC = () => {
       <div className="flex justify-between items-start mb-10">
         <div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">Cơ sở <span className="text-blue-600">Dữ liệu</span></h1>
-          <p className="text-slate-500 font-medium mt-3">Hệ thống đồng bộ hóa thời gian thực đa trình duyệt.</p>
+          <p className="text-slate-500 font-medium mt-3">Hệ thống đồng bộ hóa đám mây (Cloud Bridge) tự động.</p>
         </div>
         <div className="flex items-center space-x-3 bg-white px-5 py-3 rounded-2xl border border-slate-100 shadow-sm">
           <div className={`w-3 h-3 rounded-full transition-opacity duration-1000 ${isLive ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]' : 'bg-emerald-200'}`}></div>
@@ -58,23 +58,31 @@ const AdminDatabase: React.FC = () => {
         </div>
       </div>
 
-      {/* AUTO CLOUD SYNC CONFIGURATION */}
+      {/* CLOUD SYNC CONFIGURATION */}
       <div className="mb-8 p-10 bg-slate-900 rounded-[3rem] text-white shadow-2xl relative overflow-hidden border border-slate-800">
         <div className="relative z-10">
-          <div className="flex items-center gap-6 mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-3xl shadow-lg">
-              <i className="fa-solid fa-cloud-arrow-up"></i>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+            <div className="flex items-center gap-6">
+              <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-3xl shadow-lg">
+                <i className="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <div>
+                <h3 className="text-2xl font-black tracking-tight">Đồng bộ đa trình duyệt</h3>
+                <p className="text-slate-400 text-sm font-medium mt-1">Sử dụng Google Sheets làm cầu nối dữ liệu thời gian thực.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-2xl font-black tracking-tight">Cổng đồng bộ Tự động (Cloud Bridge)</h3>
-              <p className="text-slate-400 text-sm font-medium mt-1">Sử dụng Google Apps Script làm trung tâm dữ liệu giữa các trình duyệt.</p>
-            </div>
+            {lastSync && (
+              <div className="bg-white/10 px-6 py-3 rounded-2xl border border-white/10 text-center md:text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400 mb-1">Cập nhật cuối</p>
+                <p className="text-sm font-bold">{new Date(lastSync).toLocaleString('vi-VN')}</p>
+              </div>
+            )}
           </div>
 
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Google Web App URL (Endpoint)</label>
-              <div className="flex gap-3">
+          <div className="space-y-8">
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Google Web App URL</label>
+              <div className="flex flex-col md:flex-row gap-3">
                 <input 
                   type="text" 
                   value={cloudUrl}
@@ -84,9 +92,9 @@ const AdminDatabase: React.FC = () => {
                 />
                 <button 
                   onClick={handleSaveCloudUrl}
-                  className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black transition active:scale-95 shadow-lg"
+                  className="px-10 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black transition active:scale-95 shadow-xl shadow-blue-900/40"
                 >
-                  Kết nối
+                  Kết nối Cloud
                 </button>
               </div>
             </div>
@@ -95,31 +103,33 @@ const AdminDatabase: React.FC = () => {
               <button 
                 onClick={handlePullData}
                 disabled={!cloudUrl || syncing}
-                className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold transition flex items-center gap-2 text-xs"
+                className="px-8 py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold transition flex items-center gap-3 text-sm disabled:opacity-30"
               >
                 {syncing ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-rotate"></i>}
-                Tải dữ liệu từ Cloud (Pull)
+                Đồng bộ ngay (Force Sync)
               </button>
               <button 
-                onClick={handleDownloadGAS}
-                className="px-6 py-3 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-xl font-bold transition flex items-center gap-2 text-xs"
+                onClick={() => downloadScriptFile(generateGoogleAppsScript())}
+                className="px-8 py-4 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-2xl font-bold transition flex items-center gap-3 text-sm"
               >
                 <i className="fa-solid fa-download"></i>
-                Lấy Script cho Google Sheets
+                Tải Script cho Sheets
               </button>
             </div>
           </div>
         </div>
-        <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-blue-600/5 rounded-full blur-3xl"></div>
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-blue-600/5 rounded-full blur-3xl"></div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm group hover:border-blue-200 transition-all">
-          <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i className="fa-solid fa-share-nodes text-2xl"></i>
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm group hover:border-blue-200 transition-all flex flex-col justify-between">
+          <div>
+            <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <i className="fa-solid fa-share-nodes text-2xl"></i>
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">Đồng bộ qua Link</h3>
+            <p className="text-slate-500 text-sm mb-6 font-medium">Nếu không dùng Cloud, bạn có thể gửi link chứa toàn bộ dữ liệu mã hóa để khôi phục trên trình duyệt khác.</p>
           </div>
-          <h3 className="text-xl font-black text-slate-800 mb-2">Đồng bộ qua Link</h3>
-          <p className="text-slate-500 text-sm mb-6 font-medium">Sao chép liên kết chứa toàn bộ mã hóa dữ liệu để khôi phục tức thì trên trình duyệt khác.</p>
           <button 
             onClick={() => {
               const link = db.generateSyncLink();
@@ -134,12 +144,14 @@ const AdminDatabase: React.FC = () => {
           </button>
         </div>
 
-        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm group hover:border-emerald-200 transition-all">
-          <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i className="fa-solid fa-file-excel text-2xl"></i>
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm group hover:border-emerald-200 transition-all flex flex-col justify-between">
+          <div>
+            <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+              <i className="fa-solid fa-file-excel text-2xl"></i>
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">Báo cáo Excel Master</h3>
+            <p className="text-slate-500 text-sm mb-6 font-medium">Xuất dữ liệu Tickets, Assets và Người dùng thành một file Excel cấu trúc chuẩn để lưu trữ lâu dài.</p>
           </div>
-          <h3 className="text-xl font-black text-slate-800 mb-2">Báo cáo Excel Master</h3>
-          <p className="text-slate-500 text-sm mb-6 font-medium">Xuất dữ liệu Tickets, Assets và Người dùng thành một file Excel cấu trúc chuẩn.</p>
           <button 
             onClick={() => exportFullDatabaseToExcel({
               tickets: db.getTickets(),
@@ -149,22 +161,9 @@ const AdminDatabase: React.FC = () => {
             })}
             className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black hover:bg-emerald-700 transition shadow-lg"
           >
-            Tải Excel Full DB
+            Tải Excel Master
           </button>
         </div>
-      </div>
-
-      <div className="p-8 bg-rose-50 rounded-[2.5rem] border border-rose-100 flex flex-col md:flex-row gap-6 items-center justify-between">
-        <div className="flex gap-6 items-center">
-           <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center shrink-0">
-             <i className="fa-solid fa-triangle-exclamation"></i>
-           </div>
-           <div>
-             <h4 className="font-bold text-rose-900">Xóa sạch cơ sở dữ liệu địa phương</h4>
-             <p className="text-rose-700 text-xs mt-1">Cẩn thận: Thao tác này sẽ xóa sạch Local Storage nhưng không ảnh hưởng tới Cloud.</p>
-           </div>
-        </div>
-        <button onClick={() => {if(window.confirm('Xóa sạch DB cục bộ?')) db.clearDB()}} className="px-8 py-3 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition shadow-lg shrink-0">Factory Reset</button>
       </div>
     </div>
   );

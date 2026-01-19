@@ -48,19 +48,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initialize = async () => {
-      // 1. Kiểm tra URL Sync
+      // 1. Kiểm tra URL Sync (Link thủ công)
       const urlParams = new URLSearchParams(window.location.search);
       const syncData = urlParams.get('sync_data');
       if (syncData && db.importFromEncodedString(syncData)) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      // 2. Tự động đồng bộ từ Cloud nếu có cấu hình
-      if (db.getCloudUrl()) {
-        await db.syncWithCloud();
-      }
-
-      // 3. Khởi tạo dữ liệu mẫu nếu DB trống
+      // 2. Khởi tạo dữ liệu mẫu nếu DB trống
       if (!db.isInitialized()) {
         db.saveTickets(MOCK_TICKETS);
         db.saveAssets(INITIAL_ASSETS);
@@ -68,14 +63,32 @@ const App: React.FC = () => {
         db.setInitialized();
       }
       
+      // 3. Tự động đồng bộ từ Cloud lần đầu
+      if (db.getCloudUrl()) {
+        await db.syncWithCloud();
+      }
+      
       refreshData();
       setIsLoading(false);
     };
 
     initialize();
+
+    // 4. Thiết lập Polling Cloud Sync (Mỗi 60 giây)
+    const cloudPollInterval = setInterval(async () => {
+      if (db.getCloudUrl()) {
+        console.log("Background Cloud Polling...");
+        await db.syncWithCloud();
+      }
+    }, 60000);
+
     db.onSync(() => refreshData());
     window.addEventListener('local_db_update', refreshData);
-    return () => window.removeEventListener('local_db_update', refreshData);
+    
+    return () => {
+      window.removeEventListener('local_db_update', refreshData);
+      clearInterval(cloudPollInterval);
+    };
   }, [refreshData]);
 
   const addToast = (message: string, type: 'info' | 'success' | 'warning' | 'danger' = 'info') => {

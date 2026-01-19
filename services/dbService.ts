@@ -8,7 +8,8 @@ const STORAGE_KEYS = {
   ASSETS: 'helpdesk_db_assets',
   LOGS: 'helpdesk_db_logs',
   INITIALIZED: 'helpdesk_db_initialized',
-  CLOUD_URL: 'helpdesk_cloud_sync_url'
+  CLOUD_URL: 'helpdesk_cloud_sync_url',
+  LAST_SYNC: 'helpdesk_last_sync_time'
 };
 
 const syncChannel = new BroadcastChannel('helpdesk_realtime_sync');
@@ -18,7 +19,7 @@ class DatabaseService {
     syncChannel.postMessage({ type, timestamp: Date.now() });
     window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type } }));
     
-    // Tự động đẩy lên Cloud nếu đã cấu hình
+    // Tự động đẩy lên Cloud khi có thay đổi cục bộ
     this.autoPush(type);
   }
 
@@ -26,9 +27,14 @@ class DatabaseService {
     const cloudUrl = this.getCloudUrl();
     if (!cloudUrl) return;
 
-    if (type === 'TICKETS' || type === 'ALL') pushToCloud(cloudUrl, 'Tickets', this.getTickets());
-    if (type === 'ASSETS' || type === 'ALL') pushToCloud(cloudUrl, 'Assets', this.getAssets());
-    if (type === 'USERS' || type === 'ALL') pushToCloud(cloudUrl, 'Users', this.getUsers());
+    try {
+      if (type === 'TICKETS' || type === 'ALL') await pushToCloud(cloudUrl, 'Tickets', this.getTickets());
+      if (type === 'ASSETS' || type === 'ALL') await pushToCloud(cloudUrl, 'Assets', this.getAssets());
+      if (type === 'USERS' || type === 'ALL') await pushToCloud(cloudUrl, 'Users', this.getUsers());
+      localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+    } catch (e) {
+      console.error("Auto push failed", e);
+    }
   }
 
   setCloudUrl(url: string) {
@@ -40,19 +46,33 @@ class DatabaseService {
     return localStorage.getItem(STORAGE_KEYS.CLOUD_URL);
   }
 
+  getLastSyncTime(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
+  }
+
   async syncWithCloud(): Promise<boolean> {
     const url = this.getCloudUrl();
     if (!url) return false;
     
-    const cloudData = await pullFromCloud(url);
-    if (cloudData) {
-      if (cloudData.Tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(cloudData.Tickets));
-      if (cloudData.Assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(cloudData.Assets));
-      if (cloudData.Users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudData.Users));
-      this.broadcastChange('ALL');
-      return true;
+    try {
+      const cloudData = await pullFromCloud(url);
+      if (cloudData && Object.keys(cloudData).length > 0) {
+        // Chỉ ghi đè nếu dữ liệu thực sự tồn tại trên Cloud
+        if (cloudData.Tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(cloudData.Tickets));
+        if (cloudData.Assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(cloudData.Assets));
+        if (cloudData.Users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudData.Users));
+        
+        localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+        // Thông báo cho các tab khác biết dữ liệu đã thay đổi
+        syncChannel.postMessage({ type: 'ALL', timestamp: Date.now() });
+        window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type: 'ALL' } }));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error("Cloud Sync Error:", e);
+      return false;
     }
-    return false;
   }
 
   logAction(userId: string, userName: string, action: string, details: string, type: SystemLog['type'] = 'INFO') {
