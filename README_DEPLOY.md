@@ -1,13 +1,11 @@
 
-# Hướng dẫn Fix lỗi "npm install" trên Vercel
+# Hướng dẫn Deploy IT Helpdesk lên Vercel
 
-Nếu quá trình Deploy vẫn báo lỗi `Command "npm install" exited with 1`, hãy thực hiện các bước sau tại **Vercel Dashboard**:
+Dự án này sử dụng **Vite + React**. Để ứng dụng hoạt động, bạn cần đảm bảo Vercel thực hiện quy trình build:
 
-1.  **Vào Project Settings** -> **Build & Development**.
-2.  **Install Command**: Bật **Override** và nhập: `echo "skip"`
-3.  **Build Command**: Bật **Override** và nhập: `echo "skip"`
-4.  **Output Directory**: Bật **Override** và nhập: `.`
-5.  **Framework Preset**: Chọn **Other**.
-6.  Nhấn **Save** và **Redeploy**.
+1.  **Framework Preset**: Chọn **Vite**.
+2.  **Build Command**: Để mặc định (`npm run build`).
+3.  **Install Command**: Đảm bảo sử dụng `npm install --legacy-peer-deps` (đã cấu hình trong vercel.json).
+4.  **Environment Variables**: Thêm `API_KEY` (Gemini API Key) vào phần Settings của dự án trên Vercel.
 
-Ứng dụng IT Helpdesk này được thiết kế theo kiến trúc **Pure ESM**, sử dụng trình duyệt để xử lý trực tiếp các module từ CDN, nên hoàn toàn không cần môi trường Node.js để cài đặt thư viện. Việc bỏ qua các lệnh này là cách vận hành đúng đắn nhất cho loại ứng dụng này.
+**Lưu ý quan trọng**: Nếu trước đó bạn đã thực hiện "Override" lệnh build/install thành `echo "skip"` hoặc `true` trên giao diện Vercel, hãy **TẮT** (hoặc xóa) các override đó đi để Vercel sử dụng cấu hình từ file `vercel.json` mới cập nhật.
