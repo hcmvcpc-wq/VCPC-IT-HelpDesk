@@ -61,6 +61,8 @@ export interface Asset {
   status: AssetStatus;
   assignedToId?: string;
   assignedToName?: string;
+  subsidiary: string; // Added
+  department: string; // Added
   purchaseDate: string;
   value: number;
 }

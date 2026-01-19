@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { User, UserRole } from '../types';
 import { DEPARTMENTS, SUBSIDIARIES } from '../constants';
@@ -64,6 +65,13 @@ const UserManagement: React.FC<UserManagementProps> = ({
     setShowModal(true);
   };
 
+  const handleResetPassword = (u: User) => {
+    const newPassword = window.prompt(`Đặt lại mật khẩu cho ${u.fullName} (ID: ${u.username}). Nhập mật khẩu mới bên dưới:`, '123');
+    if (newPassword !== null && newPassword.trim() !== '') {
+      onUpdateUser(u.id, { password: newPassword.trim() });
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
@@ -83,8 +91,8 @@ const UserManagement: React.FC<UserManagementProps> = ({
     <div className="p-6 md:p-10 space-y-8 max-w-[1400px] mx-auto pb-24 page-enter">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Quản lý <span className="text-blue-600">Nhân sự</span></h1>
-          <p className="text-slate-500 font-medium mt-2">Tổng số: {users.length} người dùng trên hệ thống</p>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">Quản lý <span className="text-blue-600">Nhân sự</span></h1>
+          <p className="text-slate-500 font-medium mt-3">Quản lý tài khoản, phân quyền và đặt lại mật khẩu cho nhân viên.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
           <div className="relative flex-1 sm:w-64">
@@ -92,19 +100,19 @@ const UserManagement: React.FC<UserManagementProps> = ({
             <input 
               type="text" 
               placeholder="Tìm tên, ID, phòng ban..." 
-              className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-600/5 transition-all text-sm font-medium"
+              className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-600/5 transition-all text-sm font-medium shadow-sm"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <button onClick={() => handleOpenModal()} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-3 transition transform active:scale-95 shrink-0">
+          <button onClick={() => handleOpenModal()} className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-3 transition transform active:scale-95 shrink-0">
             <i className="fa-solid fa-user-plus"></i>
             <span>Tạo tài khoản mới</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
@@ -125,7 +133,7 @@ const UserManagement: React.FC<UserManagementProps> = ({
                   <tr key={u.id} className="hover:bg-slate-50/80 transition-all group">
                     <td className="px-10 py-7">
                       <div className="flex items-center space-x-5">
-                        <div className="w-12 h-12 rounded-xl bg-slate-900 text-white flex items-center justify-center font-black shadow-lg">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-black shadow-lg group-hover:scale-110 transition-transform">
                           {u.fullName.charAt(0)}
                         </div>
                         <div>
@@ -149,11 +157,26 @@ const UserManagement: React.FC<UserManagementProps> = ({
                     </td>
                     <td className="px-10 py-7 text-right">
                       <div className="flex justify-end space-x-2">
-                        <button onClick={() => handleOpenModal(u)} className="w-10 h-10 flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded-xl transition-colors">
+                        <button 
+                          onClick={() => handleResetPassword(u)} 
+                          title="Đặt lại mật khẩu"
+                          className="w-10 h-10 flex items-center justify-center text-amber-500 hover:bg-amber-50 rounded-xl transition-all hover:scale-110"
+                        >
+                          <i className="fa-solid fa-key"></i>
+                        </button>
+                        <button 
+                          onClick={() => handleOpenModal(u)} 
+                          title="Sửa thông tin"
+                          className="w-10 h-10 flex items-center justify-center text-blue-600 hover:bg-blue-50 rounded-xl transition-all hover:scale-110"
+                        >
                           <i className="fa-solid fa-user-pen"></i>
                         </button>
                         {u.id !== currentUser.id && (
-                          <button onClick={() => {if(window.confirm(`Xóa tài khoản ${u.fullName}?`)) onDeleteUser(u.id)}} className="w-10 h-10 flex items-center justify-center text-rose-500 hover:bg-rose-50 rounded-xl transition-colors">
+                          <button 
+                            onClick={() => {if(window.confirm(`Xóa tài khoản ${u.fullName}?`)) onDeleteUser(u.id)}} 
+                            title="Xóa tài khoản"
+                            className="w-10 h-10 flex items-center justify-center text-rose-500 hover:bg-rose-50 rounded-xl transition-all hover:scale-110"
+                          >
                             <i className="fa-solid fa-trash-can"></i>
                           </button>
                         )}
@@ -169,10 +192,13 @@ const UserManagement: React.FC<UserManagementProps> = ({
 
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3rem] w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="p-8 bg-blue-600 text-white flex justify-between items-center">
-               <h3 className="text-2xl font-black">{editingUser ? 'Cập nhật' : 'Tạo'} tài khoản mới</h3>
-               <button onClick={() => setShowModal(false)} className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition">
+          <div className="bg-white rounded-[3rem] w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 border border-white/20">
+            <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
+               <div>
+                  <h3 className="text-2xl font-black tracking-tight">{editingUser ? 'Cập nhật' : 'Tạo'} tài khoản</h3>
+                  <p className="text-slate-400 text-xs mt-1 font-bold">Quản lý hồ sơ nhân viên trong hệ thống.</p>
+               </div>
+               <button onClick={() => setShowModal(false)} className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all active:scale-90">
                  <i className="fa-solid fa-xmark"></i>
                </button>
             </div>
@@ -183,9 +209,15 @@ const UserManagement: React.FC<UserManagementProps> = ({
                 <input required type="text" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 focus:border-blue-500 outline-none font-bold text-slate-700 bg-slate-50/50" placeholder="VD: Nguyễn Văn A" />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Tên đăng nhập</label>
-                <input required type="text" disabled={!!editingUser} value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 focus:border-blue-500 outline-none font-bold text-slate-700 bg-slate-50/50 disabled:opacity-50" placeholder="VD: van_nguyen" />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Tên đăng nhập</label>
+                  <input required type="text" disabled={!!editingUser} value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} className="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 focus:border-blue-500 outline-none font-bold text-slate-700 bg-slate-50/50 disabled:opacity-50" placeholder="VD: van_nguyen" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Mật khẩu</label>
+                  <input required type="text" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} className="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 focus:border-blue-500 outline-none font-bold text-slate-700 bg-slate-50/50" placeholder="Mật khẩu" />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -209,24 +241,28 @@ const UserManagement: React.FC<UserManagementProps> = ({
                    <button 
                      type="button" 
                      onClick={() => setFormData({...formData, role: UserRole.USER})}
-                     className={`py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all ${formData.role === UserRole.USER ? 'bg-blue-50 border-blue-600 text-blue-600' : 'bg-white border-slate-100 text-slate-400'}`}
+                     className={`py-4 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all ${formData.role === UserRole.USER ? 'bg-blue-50 border-blue-600 text-blue-600' : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'}`}
                    >
+                     <i className="fa-solid fa-user mr-2"></i>
                      Người dùng
                    </button>
                    <button 
                      type="button" 
                      onClick={() => setFormData({...formData, role: UserRole.ADMIN})}
-                     className={`py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all ${formData.role === UserRole.ADMIN ? 'bg-blue-50 border-blue-600 text-blue-600' : 'bg-white border-slate-100 text-slate-400'}`}
+                     className={`py-4 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all ${formData.role === UserRole.ADMIN ? 'bg-blue-50 border-blue-600 text-blue-600' : 'bg-white border-slate-100 text-slate-400 hover:bg-slate-50'}`}
                    >
+                     <i className="fa-solid fa-user-shield mr-2"></i>
                      Quản trị viên
                    </button>
                 </div>
               </div>
 
-              <div className="pt-6 space-y-3">
-                <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white py-5 rounded-2xl font-black shadow-xl transition-all transform active:scale-[0.98]">
-                  {editingUser ? 'Cập nhật tài khoản' : 'Xác nhận tạo tài khoản'}
+              <div className="pt-6">
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-black shadow-2xl shadow-blue-500/20 transition-all transform active:scale-95 flex items-center justify-center space-x-3">
+                  <i className="fa-solid fa-save"></i>
+                  <span>{editingUser ? 'Lưu thay đổi' : 'Xác nhận tạo tài khoản'}</span>
                 </button>
+                <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest mt-4">Hành động này sẽ được ghi nhật ký hệ thống</p>
               </div>
             </form>
           </div>

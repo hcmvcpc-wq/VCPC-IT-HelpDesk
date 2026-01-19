@@ -1,11 +1,14 @@
+
 import { Ticket, User, Asset, SystemLog } from '../types';
+import { pushToCloud, pullFromCloud } from './googleSheetsService';
 
 const STORAGE_KEYS = {
   TICKETS: 'helpdesk_db_tickets',
   USERS: 'helpdesk_db_users',
   ASSETS: 'helpdesk_db_assets',
   LOGS: 'helpdesk_db_logs',
-  INITIALIZED: 'helpdesk_db_initialized'
+  INITIALIZED: 'helpdesk_db_initialized',
+  CLOUD_URL: 'helpdesk_cloud_sync_url'
 };
 
 const syncChannel = new BroadcastChannel('helpdesk_realtime_sync');
@@ -14,9 +17,44 @@ class DatabaseService {
   private broadcastChange(type: 'TICKETS' | 'USERS' | 'ASSETS' | 'LOGS' | 'ALL') {
     syncChannel.postMessage({ type, timestamp: Date.now() });
     window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type } }));
+    
+    // Tự động đẩy lên Cloud nếu đã cấu hình
+    this.autoPush(type);
   }
 
-  // Tiện ích ghi Log
+  private async autoPush(type: string) {
+    const cloudUrl = this.getCloudUrl();
+    if (!cloudUrl) return;
+
+    if (type === 'TICKETS' || type === 'ALL') pushToCloud(cloudUrl, 'Tickets', this.getTickets());
+    if (type === 'ASSETS' || type === 'ALL') pushToCloud(cloudUrl, 'Assets', this.getAssets());
+    if (type === 'USERS' || type === 'ALL') pushToCloud(cloudUrl, 'Users', this.getUsers());
+  }
+
+  setCloudUrl(url: string) {
+    localStorage.setItem(STORAGE_KEYS.CLOUD_URL, url);
+    this.broadcastChange('ALL');
+  }
+
+  getCloudUrl(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.CLOUD_URL);
+  }
+
+  async syncWithCloud(): Promise<boolean> {
+    const url = this.getCloudUrl();
+    if (!url) return false;
+    
+    const cloudData = await pullFromCloud(url);
+    if (cloudData) {
+      if (cloudData.Tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(cloudData.Tickets));
+      if (cloudData.Assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(cloudData.Assets));
+      if (cloudData.Users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudData.Users));
+      this.broadcastChange('ALL');
+      return true;
+    }
+    return false;
+  }
+
   logAction(userId: string, userName: string, action: string, details: string, type: SystemLog['type'] = 'INFO') {
     const logs = this.getLogs();
     const newLog: SystemLog = {
@@ -28,7 +66,7 @@ class DatabaseService {
       details,
       type
     };
-    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify([newLog, ...logs].slice(0, 100))); // Lưu 100 log gần nhất
+    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify([newLog, ...logs].slice(0, 100)));
     this.broadcastChange('LOGS');
   }
 
@@ -45,7 +83,6 @@ class DatabaseService {
     localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
   }
 
-  // QUẢN LÝ TICKETS
   getTickets(): Ticket[] {
     const data = localStorage.getItem(STORAGE_KEYS.TICKETS);
     return data ? JSON.parse(data) : [];
@@ -59,7 +96,6 @@ class DatabaseService {
     this.broadcastChange('TICKETS');
   }
 
-  // QUẢN LÝ NGƯỜI DÙNG (USER & ADMIN)
   getUsers(): User[] {
     const data = localStorage.getItem(STORAGE_KEYS.USERS);
     return data ? JSON.parse(data) : [];
@@ -73,7 +109,6 @@ class DatabaseService {
     this.broadcastChange('USERS');
   }
 
-  // QUẢN LÝ TÀI SẢN
   getAssets(): Asset[] {
     const data = localStorage.getItem(STORAGE_KEYS.ASSETS);
     return data ? JSON.parse(data) : [];
@@ -87,7 +122,6 @@ class DatabaseService {
     this.broadcastChange('ASSETS');
   }
 
-  // TIỆN ÍCH DỮ LIỆU
   generateSyncLink(): string {
     const data = {
       tickets: this.getTickets(),
@@ -102,7 +136,6 @@ class DatabaseService {
     return url.toString();
   }
 
-  // Fix: Added importDB to handle JSON backup import
   importDB(jsonStr: string): boolean {
     try {
       const data = JSON.parse(jsonStr);
@@ -114,12 +147,10 @@ class DatabaseService {
       this.broadcastChange('ALL');
       return true;
     } catch (e) {
-      console.error("Import error:", e);
       return false;
     }
   }
 
-  // Fix: Added exportDB to trigger JSON backup download
   exportDB() {
     const data = {
       tickets: this.getTickets(),
@@ -155,16 +186,13 @@ class DatabaseService {
   getDatabaseSize(): string {
     let total = 0;
     for (const key in localStorage) {
-      if (key.startsWith('helpdesk_db_')) {
-        total += (localStorage[key].length * 2); // 2 bytes per char
-      }
+      if (key.startsWith('helpdesk_db_')) total += (localStorage[key].length * 2);
     }
     return (total / 1024).toFixed(2) + ' KB';
   }
 
   clearDB() {
     Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
-    this.broadcastChange('ALL');
     window.location.reload();
   }
 

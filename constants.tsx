@@ -20,6 +20,8 @@ export const INITIAL_ASSETS: Asset[] = [
     status: AssetStatus.IN_USE,
     assignedToId: 'u2',
     assignedToName: 'John Doe',
+    subsidiary: 'VCHQ',
+    department: 'Marketing',
     purchaseDate: '2024-01-15',
     value: 45000000
   },
@@ -29,6 +31,8 @@ export const INITIAL_ASSETS: Asset[] = [
     type: 'Monitor',
     serialNumber: 'DELL-U27-9001',
     status: AssetStatus.IN_STOCK,
+    subsidiary: 'VCHC',
+    department: 'IT',
     purchaseDate: '2023-11-20',
     value: 12000000
   },
@@ -38,6 +42,8 @@ export const INITIAL_ASSETS: Asset[] = [
     type: 'Network Device',
     serialNumber: 'CS-C9200-881',
     status: AssetStatus.REPAIRING,
+    subsidiary: 'VCHC',
+    department: 'IT',
     purchaseDate: '2022-05-10',
     value: 25000000
   }
