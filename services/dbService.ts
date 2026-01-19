@@ -18,8 +18,6 @@ class DatabaseService {
   private broadcastChange(type: 'TICKETS' | 'USERS' | 'ASSETS' | 'LOGS' | 'ALL') {
     syncChannel.postMessage({ type, timestamp: Date.now() });
     window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type } }));
-    
-    // Tự động đẩy lên Cloud khi có thay đổi cục bộ
     this.autoPush(type);
   }
 
@@ -33,12 +31,14 @@ class DatabaseService {
       if (type === 'USERS' || type === 'ALL') await pushToCloud(cloudUrl, 'Users', this.getUsers());
       localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
     } catch (e) {
-      console.error("Auto push failed", e);
+      console.warn("Cloud push failed (likely no-cors or offline), data remains local.");
     }
   }
 
   setCloudUrl(url: string) {
+    if (!url) return;
     localStorage.setItem(STORAGE_KEYS.CLOUD_URL, url);
+    localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true'); // Đánh dấu đã có nguồn dữ liệu
     this.broadcastChange('ALL');
   }
 
@@ -50,27 +50,30 @@ class DatabaseService {
     return localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
   }
 
+  /**
+   * Tự động đồng bộ toàn diện từ Cloud
+   */
   async syncWithCloud(): Promise<boolean> {
     const url = this.getCloudUrl();
     if (!url) return false;
     
     try {
       const cloudData = await pullFromCloud(url);
-      if (cloudData && Object.keys(cloudData).length > 0) {
-        // Chỉ ghi đè nếu dữ liệu thực sự tồn tại trên Cloud
-        if (cloudData.Tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(cloudData.Tickets));
-        if (cloudData.Assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(cloudData.Assets));
-        if (cloudData.Users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudData.Users));
+      if (cloudData && typeof cloudData === 'object') {
+        let hasData = false;
+        if (cloudData.Tickets) { localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(cloudData.Tickets)); hasData = true; }
+        if (cloudData.Assets) { localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(cloudData.Assets)); hasData = true; }
+        if (cloudData.Users) { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudData.Users)); hasData = true; }
         
-        localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-        // Thông báo cho các tab khác biết dữ liệu đã thay đổi
-        syncChannel.postMessage({ type: 'ALL', timestamp: Date.now() });
-        window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type: 'ALL' } }));
-        return true;
+        if (hasData) {
+          localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+          localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+          window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type: 'ALL' } }));
+          return true;
+        }
       }
       return false;
     } catch (e) {
-      console.error("Cloud Sync Error:", e);
       return false;
     }
   }
@@ -142,65 +145,16 @@ class DatabaseService {
     this.broadcastChange('ASSETS');
   }
 
-  generateSyncLink(): string {
-    const data = {
-      tickets: this.getTickets(),
-      users: this.getUsers(),
-      assets: this.getAssets(),
-      logs: this.getLogs()
-    };
-    const jsonStr = JSON.stringify(data);
-    const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-    const url = new URL(window.location.href);
-    url.searchParams.set('sync_data', base64);
+  /**
+   * Tạo link chia sẻ để trình duyệt khác tự động kết nối Cloud
+   */
+  generateAutoConnectLink(): string {
+    const cloudUrl = this.getCloudUrl();
+    if (!cloudUrl) return window.location.origin + window.location.pathname;
+    
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('connect', btoa(cloudUrl));
     return url.toString();
-  }
-
-  importDB(jsonStr: string): boolean {
-    try {
-      const data = JSON.parse(jsonStr);
-      if (data.tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets));
-      if (data.users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users));
-      if (data.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(data.assets));
-      if (data.logs) localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(data.logs));
-      this.setInitialized();
-      this.broadcastChange('ALL');
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  exportDB() {
-    const data = {
-      tickets: this.getTickets(),
-      users: this.getUsers(),
-      assets: this.getAssets(),
-      logs: this.getLogs()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `helpdesk_backup_${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  importFromEncodedString(encoded: string): boolean {
-    try {
-      const jsonStr = decodeURIComponent(escape(atob(encoded)));
-      const data = JSON.parse(jsonStr);
-      if (data.tickets) localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets));
-      if (data.users) localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users));
-      if (data.assets) localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(data.assets));
-      if (data.logs) localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(data.logs));
-      this.setInitialized();
-      this.broadcastChange('ALL');
-      return true;
-    } catch (e) {
-      return false;
-    }
   }
 
   getDatabaseSize(): string {

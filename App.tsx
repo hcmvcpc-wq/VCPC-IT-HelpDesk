@@ -40,32 +40,45 @@ const App: React.FC = () => {
 
     const savedUser = localStorage.getItem('helpdesk_user');
     if (savedUser) {
-      const parsed = JSON.parse(savedUser);
-      const latest = storedUsers.find(u => u.id === parsed.id);
-      if (latest) setCurrentUser(latest);
+      try {
+        const parsed = JSON.parse(savedUser);
+        const latest = storedUsers.find(u => u.id === parsed.id);
+        if (latest) setCurrentUser(latest);
+      } catch (e) {
+        localStorage.removeItem('helpdesk_user');
+      }
     }
   }, []);
 
   useEffect(() => {
     const initialize = async () => {
-      // 1. Kiểm tra URL Sync (Link thủ công)
+      // 1. Kiểm tra URL Auto-Connect (Ưu tiên cao nhất)
       const urlParams = new URLSearchParams(window.location.search);
-      const syncData = urlParams.get('sync_data');
-      if (syncData && db.importFromEncodedString(syncData)) {
-        window.history.replaceState({}, document.title, window.location.pathname);
+      const connectBase64 = urlParams.get('connect');
+      
+      if (connectBase64) {
+        try {
+          const decodedUrl = atob(connectBase64);
+          if (decodedUrl.startsWith('http')) {
+            db.setCloudUrl(decodedUrl);
+            await db.syncWithCloud();
+            // Xóa tham số URL để link sạch sẽ
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        } catch (e) { console.error("Auto-connect failed"); }
       }
 
-      // 2. Khởi tạo dữ liệu mẫu nếu DB trống
+      // 2. Nếu đã có Cloud URL từ trước, tự động tải dữ liệu
+      if (db.getCloudUrl()) {
+        await db.syncWithCloud();
+      }
+
+      // 3. Khởi tạo dữ liệu mẫu CHỈ KHI không có Cloud và chưa khởi tạo bao giờ
       if (!db.isInitialized()) {
         db.saveTickets(MOCK_TICKETS);
         db.saveAssets(INITIAL_ASSETS);
         db.saveUsers(INITIAL_USERS);
         db.setInitialized();
-      }
-      
-      // 3. Tự động đồng bộ từ Cloud lần đầu
-      if (db.getCloudUrl()) {
-        await db.syncWithCloud();
       }
       
       refreshData();
@@ -74,12 +87,9 @@ const App: React.FC = () => {
 
     initialize();
 
-    // 4. Thiết lập Polling Cloud Sync (Mỗi 60 giây)
+    // 4. Polling Cloud định kỳ
     const cloudPollInterval = setInterval(async () => {
-      if (db.getCloudUrl()) {
-        console.log("Background Cloud Polling...");
-        await db.syncWithCloud();
-      }
+      if (db.getCloudUrl()) await db.syncWithCloud();
     }, 60000);
 
     db.onSync(() => refreshData());
