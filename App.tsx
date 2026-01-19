@@ -9,9 +9,8 @@ import Sidebar from './components/Sidebar';
 import TicketListView from './components/TicketListView';
 import UserManagement from './components/UserManagement';
 import AssetManagement from './components/AssetManagement';
-import AdminDatabase from './components/AdminDatabase';
 
-type ViewType = 'DASHBOARD' | 'TICKETS' | 'REPORTS' | 'USERS' | 'ASSETS' | 'DATABASE';
+type ViewType = 'DASHBOARD' | 'TICKETS' | 'REPORTS' | 'USERS' | 'ASSETS';
 
 interface Toast {
   id: number;
@@ -49,7 +48,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const initialize = () => {
-      // 1. Kiểm tra xem có dữ liệu đồng bộ từ URL không
       const urlParams = new URLSearchParams(window.location.search);
       const syncData = urlParams.get('sync_data');
 
@@ -57,17 +55,16 @@ const App: React.FC = () => {
         const confirmSync = window.confirm("Phát hiện dữ liệu đồng bộ từ trình duyệt khác. Bạn có muốn khôi phục toàn bộ hệ thống từ nguồn này không?");
         if (confirmSync) {
           if (db.importFromEncodedString(syncData)) {
-            // Xóa param trên URL để tránh hỏi lại khi refresh
             window.history.replaceState({}, document.title, window.location.pathname);
           }
         }
       }
 
-      // 2. Khởi tạo mặc định nếu là lần đầu
       if (!db.isInitialized()) {
         db.saveTickets(MOCK_TICKETS);
         db.saveAssets(INITIAL_ASSETS);
         db.saveUsers(INITIAL_USERS);
+        db.logAction('SYSTEM', 'Hệ Thống', 'DB_INIT', 'Khởi tạo dữ liệu mẫu lần đầu thành công.', 'SUCCESS');
         db.setInitialized();
       }
       
@@ -98,23 +95,29 @@ const App: React.FC = () => {
     setCurrentUser(u);
     setCurrentView('DASHBOARD');
     localStorage.setItem('helpdesk_user', JSON.stringify(u));
+    db.logAction(u.id, u.fullName, 'LOGIN', 'Đăng nhập vào hệ thống.', 'SUCCESS');
     addToast(`Chào mừng ${u.fullName}!`, 'success');
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      db.logAction(currentUser.id, currentUser.fullName, 'LOGOUT', 'Đăng xuất khỏi hệ thống.', 'INFO');
+    }
     setCurrentUser(null);
     setCurrentView('DASHBOARD');
     localStorage.removeItem('helpdesk_user');
   };
 
   const onAddTicket = (newTicket: Ticket) => {
-    db.saveTickets([newTicket, ...tickets]);
+    const updated = [newTicket, ...tickets];
+    db.saveTickets(updated, { id: currentUser!.id, name: currentUser!.fullName }, `Tạo phiếu hỗ trợ mới: ${newTicket.id}`);
     addToast('Gửi yêu cầu thành công!', 'success');
   };
 
   const onUpdateTicket = (ticketId: string, updates: Partial<Ticket>) => {
+    const ticket = tickets.find(t => t.id === ticketId);
     const updated = tickets.map(t => t.id === ticketId ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t);
-    db.saveTickets(updated);
+    db.saveTickets(updated, { id: currentUser!.id, name: currentUser!.fullName }, `Cập nhật phiếu ${ticketId}: ${JSON.stringify(updates)}`);
   };
 
   const onAddComment = (ticketId: string, message: string, attachments?: Attachment[]) => {
@@ -129,11 +132,11 @@ const App: React.FC = () => {
       attachments
     };
     const updated = tickets.map(t => t.id === ticketId ? { ...t, comments: [...(t.comments || []), newComment], updatedAt: new Date().toISOString() } : t);
-    db.saveTickets(updated);
+    db.saveTickets(updated, { id: currentUser.id, name: currentUser.fullName }, `Gửi bình luận trong phiếu ${ticketId}`);
   };
 
-  const onAddAsset = (asset: Asset) => db.saveAssets([asset, ...assets]);
-  const onAddUser = (user: User) => db.saveUsers([...systemUsers, user]);
+  const onAddAsset = (asset: Asset) => db.saveAssets([asset, ...assets], { id: currentUser!.id, name: currentUser!.fullName }, `Thêm tài sản mới: ${asset.name}`);
+  const onAddUser = (user: User) => db.saveUsers([...systemUsers, user], { id: currentUser!.id, name: currentUser!.fullName }, `Tạo người dùng mới: ${user.username}`);
 
   const renderContent = () => {
     if (!currentUser) return null;
@@ -141,7 +144,6 @@ const App: React.FC = () => {
       case 'TICKETS': return <TicketListView tickets={tickets} user={currentUser} onUpdateTicket={onUpdateTicket} onAddComment={onAddComment} />;
       case 'USERS': return <UserManagement users={systemUsers} currentUser={currentUser} onAddUser={onAddUser} onUpdateUser={() => {}} onDeleteUser={() => {}} />;
       case 'ASSETS': return <AssetManagement assets={assets} users={systemUsers} onAddAsset={onAddAsset} onUpdateAsset={() => {}} onDeleteAsset={() => {}} />;
-      case 'DATABASE': return <AdminDatabase />;
       case 'DASHBOARD':
       default: return currentUser.role === UserRole.ADMIN ? <AdminDashboard tickets={tickets} onUpdateTicket={onUpdateTicket} onAddComment={onAddComment} /> : <UserDashboard tickets={tickets} user={currentUser} assets={assets} onAddTicket={onAddTicket} onAddComment={onAddComment} />;
     }

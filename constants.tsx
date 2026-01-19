@@ -1,10 +1,9 @@
-
 import { Ticket, TicketStatus, TicketPriority, User, UserRole, Asset, AssetStatus } from './types';
 
 export const INITIAL_USERS: User[] = [
-  { id: 'u1', username: 'admin', password: '123', fullName: 'Quản Trị Viên', role: UserRole.ADMIN, department: 'IT' },
-  { id: 'u2', username: 'john', password: '123', fullName: 'John Doe', role: UserRole.USER, department: 'Marketing' },
-  { id: 'u3', username: 'jane', password: '123', fullName: 'Jane Smith', role: UserRole.USER, department: 'Warehouse' },
+  { id: 'u1', username: 'admin', password: '123', fullName: 'Quản Trị Viên', role: UserRole.ADMIN, department: 'IT', subsidiary: 'VCHC' },
+  { id: 'u2', username: 'john', password: '123', fullName: 'John Doe', role: UserRole.USER, department: 'Marketing', subsidiary: 'VCHQ' },
+  { id: 'u3', username: 'jane', password: '123', fullName: 'Jane Smith', role: UserRole.USER, department: 'Warehouse', subsidiary: 'VCHD' },
 ];
 
 export const SUBSIDIARIES = ['VCHC', 'VCHQ', 'VCHD', 'VCLT'];

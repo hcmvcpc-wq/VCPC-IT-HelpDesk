@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Ticket, TicketStatus, TicketPriority } from '../types';
+import { Ticket, TicketStatus, TicketPriority, SystemLog } from '../types';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Legend, Cell, AreaChart, Area, PieChart, Pie
 } from 'recharts';
 import { summarizeTickets } from '../services/geminiService';
+import { exportTicketsToExcel } from '../services/excelService';
+import { db } from '../services/dbService';
 import TicketChatModal from './TicketChatModal';
 import TicketDetailModal from './TicketDetailModal';
 import { SUBSIDIARIES, CATEGORIES } from '../constants';
@@ -21,6 +23,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [activeTicketForChat, setActiveTicketForChat] = useState<Ticket | null>(null);
   const [activeTicketForDetail, setActiveTicketForDetail] = useState<Ticket | null>(null);
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
+
+  useEffect(() => {
+    setSystemLogs(db.getLogs());
+    const handleUpdate = () => setSystemLogs(db.getLogs());
+    window.addEventListener('local_db_update', handleUpdate);
+    return () => window.removeEventListener('local_db_update', handleUpdate);
+  }, []);
 
   const currentUser = useMemo(() => {
     try {
@@ -48,7 +58,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
       critical: tickets.filter(t => t.priority === TicketPriority.CRITICAL).length,
       successRate: rate,
       avgResolutionTime: "3.8h",
-      slaCompliance: slaRate + "%"
+      slaCompliance: slaRate + "%",
+      dbSize: db.getDatabaseSize()
     };
   }, [tickets]);
 
@@ -100,6 +111,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
     }
   };
 
+  const handleExportExcel = () => {
+    if (tickets.length === 0) {
+      alert("Không có dữ liệu để xuất!");
+      return;
+    }
+    exportTicketsToExcel(tickets);
+  };
+
   return (
     <div className="p-6 md:p-10 space-y-10 max-w-[1600px] mx-auto pb-24 page-enter bg-slate-50">
       <div className="flex flex-col xl:flex-row gap-8 items-start justify-between">
@@ -108,7 +127,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
             Phân tích dữ liệu thời gian thực
           </div>
           <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-none">Báo Cáo <span className="text-blue-600">Vận Hành</span></h1>
-          <p className="text-slate-500 font-medium text-lg max-w-2xl">Phân tích chuyên sâu về luồng công việc, hiệu suất đội ngũ IT và các điểm nóng kỹ thuật trong doanh nghiệp.</p>
+          <p className="text-slate-500 font-medium text-lg max-w-2xl">Hệ thống cơ sở dữ liệu hiện tại đang lưu trữ <b>{stats.total}</b> phiếu và <b>{systemLogs.length}</b> bản ghi nhật ký. Dung lượng: {stats.dbSize}.</p>
           
           <div className="flex flex-wrap gap-4 pt-4">
             <button 
@@ -116,7 +135,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
               className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-4 rounded-2xl font-bold flex items-center space-x-3 transition transform active:scale-95 shadow-2xl shadow-slate-200 group"
             >
               <i className={`fa-solid ${isSummarizing ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'} group-hover:rotate-12 transition-transform`}></i>
-              <span>AI Tổng hợp chiến lược</span>
+              <span>AI Tổng hợp</span>
+            </button>
+            <button 
+              onClick={handleExportExcel}
+              className="bg-white hover:bg-slate-50 text-emerald-600 border-2 border-emerald-100 px-8 py-4 rounded-2xl font-bold flex items-center space-x-3 transition transform active:scale-95 shadow-sm group"
+            >
+              <i className="fa-solid fa-file-excel group-hover:scale-110 transition-transform"></i>
+              <span>Xuất Excel</span>
             </button>
           </div>
         </div>
@@ -125,92 +151,116 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ tickets = [], onUpdateT
           {[
             { label: 'Tỉ lệ giải quyết', value: stats.successRate + '%', color: 'text-emerald-600', icon: 'fa-check-double' },
             { label: 'Tuân thủ SLA', value: stats.slaCompliance, color: 'text-blue-600', icon: 'fa-shield-halved' },
-            { label: 'Thời gian TB', value: stats.avgResolutionTime, color: 'text-indigo-600', icon: 'fa-clock' },
+            { label: 'Dung lượng DB', value: stats.dbSize, color: 'text-indigo-600', icon: 'fa-database' },
             { label: 'Khẩn cấp', value: stats.critical, color: 'text-rose-600', icon: 'fa-bolt-lightning' },
           ].map((item, idx) => (
             <div key={idx} className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center">
               <div className={`w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center ${item.color} mb-4`}>
                 <i className={`fa-solid ${item.icon} text-lg`}></i>
               </div>
-              <p className={`text-3xl font-black ${item.color}`}>{item.value}</p>
+              <p className={`text-2xl font-black ${item.color}`}>{item.value}</p>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{item.label}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {aiSummary && (
-        <div className="bg-blue-600 text-white p-10 rounded-[4rem] shadow-2xl relative overflow-hidden group animate-in slide-in-from-bottom-4 duration-500">
-           <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
-              <div className="w-16 h-16 rounded-3xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30">
-                <i className="fa-solid fa-robot text-3xl"></i>
-              </div>
-              <div className="space-y-4">
-                <h3 className="text-2xl font-black tracking-tight">IT Strategy Insight by AI</h3>
-                <p className="text-blue-100 leading-relaxed font-medium text-lg italic pr-12">"{aiSummary}"</p>
-              </div>
-           </div>
-        </div>
-      )}
-
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
-          <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-10">Xu hướng Phiếu yêu cầu</h3>
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={dailyTrends}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontWeight: 800}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontWeight: 800}} />
-                <Tooltip />
-                <Area type="monotone" dataKey="Phiếu mới" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={4} />
-                <Area type="monotone" dataKey="Hoàn tất" stroke="#10b981" fill="#10b981" fillOpacity={0.1} strokeWidth={4} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
-          <h3 className="text-2xl font-black text-slate-800 mb-8 text-center tracking-tight">Phân Loại Sự Cố</h3>
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={85}
-                  outerRadius={110}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
-           <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-10">Vận hành theo Đơn vị</h3>
-           <div className="h-80 w-full">
+        <div className="xl:col-span-2 space-y-8">
+          <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
+            <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-10">Xu hướng Phiếu yêu cầu</h3>
+            <div className="h-[350px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={subsidiaryStats}>
+                <AreaChart data={dailyTrends}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                  <YAxis axisLine={false} tickLine={false} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontWeight: 800}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontWeight: 800}} />
                   <Tooltip />
-                  <Bar dataKey="Mở" fill="#f59e0b" stackId="a" radius={[10, 10, 0, 0]} />
-                  <Bar dataKey="Đang làm" fill="#3b82f6" stackId="a" />
-                  <Bar dataKey="Hoàn tất" fill="#10b981" stackId="a" />
-                </BarChart>
+                  <Area type="monotone" dataKey="Phiếu mới" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={4} />
+                  <Area type="monotone" dataKey="Hoàn tất" stroke="#10b981" fill="#10b981" fillOpacity={0.1} strokeWidth={4} />
+                </AreaChart>
               </ResponsiveContainer>
-           </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
+            <div className="flex justify-between items-center mb-10">
+              <h3 className="text-2xl font-black text-slate-800 tracking-tight">Nhật ký Hệ thống (Audit Logs)</h3>
+              <span className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest">Database Live</span>
+            </div>
+            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-4 scrollbar-hide">
+              {systemLogs.length === 0 ? (
+                <p className="text-center py-10 text-slate-400 font-medium italic">Chưa có hoạt động nào được ghi nhận.</p>
+              ) : (
+                systemLogs.map(log => (
+                  <div key={log.id} className="flex gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition-colors">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      log.type === 'SUCCESS' ? 'bg-emerald-100 text-emerald-600' : 
+                      log.type === 'DANGER' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'
+                    }`}>
+                      <i className={`fa-solid ${
+                        log.action.includes('TICKET') ? 'fa-ticket' : 
+                        log.action.includes('USER') ? 'fa-user-gear' : 'fa-database'
+                      }`}></i>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex justify-between items-start">
+                        <p className="font-black text-slate-800 text-sm">{log.action}</p>
+                        <span className="text-[9px] font-bold text-slate-400">{new Date(log.timestamp).toLocaleTimeString('vi-VN')}</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1 font-medium">{log.details}</p>
+                      <p className="text-[9px] text-blue-500 font-black uppercase mt-2 tracking-widest">Thực hiện bởi: {log.userName}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-8">
+          <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
+            <h3 className="text-2xl font-black text-slate-800 mb-8 text-center tracking-tight">Phân Loại Sự Cố</h3>
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={85}
+                    outerRadius={110}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white p-10 rounded-[3.5rem] shadow-sm border border-slate-100">
+             <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-10">Vận hành theo Đơn vị</h3>
+             <div className="h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={subsidiaryStats}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                    <YAxis axisLine={false} tickLine={false} />
+                    <Tooltip />
+                    <Bar dataKey="Mở" fill="#f59e0b" stackId="a" radius={[10, 10, 0, 0]} />
+                    <Bar dataKey="Đang làm" fill="#3b82f6" stackId="a" />
+                    <Bar dataKey="Hoàn tất" fill="#10b981" stackId="a" />
+                  </BarChart>
+                </ResponsiveContainer>
+             </div>
+          </div>
+        </div>
       </div>
 
       {activeTicketForChat && <TicketChatModal ticket={activeTicketForChat} currentUser={currentUser as any} onClose={() => setActiveTicketForChat(null)} onSendMessage={onAddComment} />}

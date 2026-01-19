@@ -1,4 +1,3 @@
-
 export enum UserRole {
   ADMIN = 'ADMIN',
   USER = 'USER'
@@ -51,6 +50,7 @@ export interface User {
   fullName: string;
   role: UserRole;
   department: string;
+  subsidiary: string;
 }
 
 export interface Asset {
@@ -82,6 +82,16 @@ export interface Ticket {
   location: string;
   comments?: Comment[];
   attachments?: Attachment[];
+}
+
+export interface SystemLog {
+  id: string;
+  timestamp: string;
+  userId: string;
+  userName: string;
+  action: string;
+  details: string;
+  type: 'INFO' | 'WARNING' | 'DANGER' | 'SUCCESS';
 }
 
 export interface DashboardStats {
