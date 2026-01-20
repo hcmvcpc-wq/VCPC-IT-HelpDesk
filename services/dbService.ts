@@ -9,6 +9,7 @@ const STORAGE_KEYS = {
   LOGS: 'helpdesk_db_logs',
   INITIALIZED: 'helpdesk_db_initialized',
   CLOUD_URL: 'helpdesk_cloud_sync_url',
+  MYSQL_API_URL: 'helpdesk_mysql_api_url',
   REMOTE_JSON_URL: 'helpdesk_remote_json_url',
   LAST_SYNC: 'helpdesk_last_sync_time'
 };
@@ -16,6 +17,8 @@ const STORAGE_KEYS = {
 const syncChannel = new BroadcastChannel('helpdesk_realtime_sync');
 
 class DatabaseService {
+  private isPushing = false;
+
   private broadcastChange(type: 'TICKETS' | 'USERS' | 'ASSETS' | 'LOGS' | 'ALL') {
     syncChannel.postMessage({ type, timestamp: Date.now() });
     window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type } }));
@@ -23,24 +26,68 @@ class DatabaseService {
   }
 
   private async autoPush(type: string) {
+    if (this.isPushing) return;
+    const mysqlUrl = this.getMysqlApiUrl();
     const cloudUrl = this.getCloudUrl();
-    if (!cloudUrl) return;
 
+    if (!mysqlUrl && !cloudUrl) return;
+
+    this.isPushing = true;
     try {
-      if (type === 'TICKETS' || type === 'ALL') await pushToCloud(cloudUrl, 'Tickets', this.getTickets());
-      if (type === 'ASSETS' || type === 'ALL') await pushToCloud(cloudUrl, 'Assets', this.getAssets());
-      if (type === 'USERS' || type === 'ALL') await pushToCloud(cloudUrl, 'Users', this.getUsers());
-      localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+      // MySQL Priority Sync
+      if (mysqlUrl) {
+        const payload = {
+          type,
+          data: {
+            tickets: type === 'TICKETS' || type === 'ALL' ? this.getTickets() : [],
+            users: type === 'USERS' || type === 'ALL' ? this.getUsers() : [],
+            assets: type === 'ASSETS' || type === 'ALL' ? this.getAssets() : [],
+            logs: type === 'LOGS' || type === 'ALL' ? this.getLogs() : []
+          }
+        };
+
+        await fetch(`${mysqlUrl}/push`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+      }
+
+      // Google Sheets Backup Sync
+      if (cloudUrl) {
+        if (type === 'TICKETS' || type === 'ALL') await pushToCloud(cloudUrl, 'Tickets', this.getTickets());
+        if (type === 'ASSETS' || type === 'ALL') await pushToCloud(cloudUrl, 'Assets', this.getAssets());
+        if (type === 'USERS' || type === 'ALL') await pushToCloud(cloudUrl, 'Users', this.getUsers());
+      }
     } catch (e) {
-      console.warn("Cloud push failed, data saved locally.");
+      console.warn("Database sync failed, keeping local copy.", e);
+    } finally {
+      this.isPushing = false;
     }
   }
 
+  setMysqlApiUrl(url: string) {
+    if (url && !url.startsWith('http')) {
+      throw new Error("URL must start with http/https");
+    }
+    localStorage.setItem(STORAGE_KEYS.MYSQL_API_URL, url || '');
+    if (url) {
+      localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+      this.syncFromMysql();
+    }
+  }
+
+  getMysqlApiUrl(): string | null {
+    return localStorage.getItem(STORAGE_KEYS.MYSQL_API_URL);
+  }
+
   setCloudUrl(url: string) {
-    if (!url) return;
-    localStorage.setItem(STORAGE_KEYS.CLOUD_URL, url);
-    localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-    this.broadcastChange('ALL');
+    localStorage.setItem(STORAGE_KEYS.CLOUD_URL, url || '');
+    if (url) {
+      localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+      this.broadcastChange('ALL');
+    }
   }
 
   getCloudUrl(): string | null {
@@ -60,49 +107,43 @@ class DatabaseService {
     return localStorage.getItem(STORAGE_KEYS.LAST_SYNC);
   }
 
-  /**
-   * Nạp dữ liệu từ một URL JSON tĩnh (GitHub, Gist, v.v.)
-   */
-  async syncFromRemoteUrl(): Promise<boolean> {
-    const url = this.getRemoteJsonUrl();
+  async syncFromMysql(): Promise<boolean> {
+    const url = this.getMysqlApiUrl();
     if (!url) return false;
-
     try {
-      const response = await fetch(url);
+      const response = await fetch(`${url}/pull`);
       const data = await response.json();
       return this.importDB(JSON.stringify(data));
     } catch (e) {
-      console.error("Failed to fetch remote JSON", e);
+      console.error("MySQL Sync Error:", e);
       return false;
     }
   }
 
-  /**
-   * Đồng bộ từ Google Sheets (Two-way Bridge)
-   */
   async syncWithCloud(): Promise<boolean> {
     const url = this.getCloudUrl();
     if (!url) return false;
-    
     try {
       const cloudData = await pullFromCloud(url);
-      if (cloudData && typeof cloudData === 'object') {
-        let hasData = false;
-        if (cloudData.Tickets) { localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(cloudData.Tickets)); hasData = true; }
-        if (cloudData.Assets) { localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(cloudData.Assets)); hasData = true; }
-        if (cloudData.Users) { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(cloudData.Users)); hasData = true; }
-        
-        if (hasData) {
-          localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-          localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
-          window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type: 'ALL' } }));
-          return true;
-        }
+      if (cloudData) {
+        return this.importDB(JSON.stringify({
+          tickets: cloudData.Tickets,
+          users: cloudData.Users,
+          assets: cloudData.Assets
+        }));
       }
       return false;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
+  }
+
+  async syncFromRemoteUrl(): Promise<boolean> {
+    const url = this.getRemoteJsonUrl();
+    if (!url) return false;
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      return this.importDB(JSON.stringify(data));
+    } catch (e) { return false; }
   }
 
   logAction(userId: string, userName: string, action: string, details: string, type: SystemLog['type'] = 'INFO') {
@@ -176,29 +217,25 @@ class DatabaseService {
     try {
       const data = JSON.parse(jsonStr);
       let hasChange = false;
-      if (data.tickets) { localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(data.tickets)); hasChange = true; }
-      if (data.users) { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(data.users)); hasChange = true; }
-      if (data.assets) { localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(data.assets)); hasChange = true; }
-      if (data.logs) { localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(data.logs)); hasChange = true; }
+      const tickets = data.tickets || data.Tickets;
+      const users = data.users || data.Users;
+      const assets = data.assets || data.Assets;
+
+      if (tickets) { localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(tickets)); hasChange = true; }
+      if (users) { localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users)); hasChange = true; }
+      if (assets) { localStorage.setItem(STORAGE_KEYS.ASSETS, JSON.stringify(assets)); hasChange = true; }
       
       if (hasChange) {
         this.setInitialized();
         localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-        this.broadcastChange('ALL');
+        window.dispatchEvent(new CustomEvent('local_db_update', { detail: { type: 'ALL' } }));
         return true;
       }
       return false;
     } catch (e) {
+      console.error("DB Import Error:", e);
       return false;
     }
-  }
-
-  generateAutoConnectLink(): string {
-    const cloudUrl = this.getCloudUrl();
-    if (!cloudUrl) return window.location.origin + window.location.pathname;
-    const url = new URL(window.location.origin + window.location.pathname);
-    url.searchParams.set('connect', btoa(cloudUrl));
-    return url.toString();
   }
 
   getDatabaseSize(): string {
@@ -207,11 +244,6 @@ class DatabaseService {
       if (key.startsWith('helpdesk_db_')) total += (localStorage[key].length * 2);
     }
     return (total / 1024).toFixed(2) + ' KB';
-  }
-
-  clearDB() {
-    Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
-    window.location.reload();
   }
 
   onSync(callback: (data: any) => void) {
