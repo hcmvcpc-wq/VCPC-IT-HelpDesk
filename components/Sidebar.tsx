@@ -1,5 +1,7 @@
-import React from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
+import { db } from '../services/dbService';
 
 interface SidebarProps {
   user: User;
@@ -10,6 +12,13 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, currentView, onViewChange }) => {
   const isAdmin = user.role === UserRole.ADMIN;
+  const [cloudActive, setCloudActive] = useState(!!db.getMysqlApiUrl());
+
+  useEffect(() => {
+    const handleUpdate = () => setCloudActive(!!db.getMysqlApiUrl());
+    window.addEventListener('local_db_update', handleUpdate);
+    return () => window.removeEventListener('local_db_update', handleUpdate);
+  }, []);
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 hidden md:flex flex-col border-r border-slate-800 shrink-0 shadow-2xl">
@@ -78,6 +87,21 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, currentView, onViewCh
                 <i className="fa-solid fa-users-gears w-5"></i>
                 <span className="font-bold text-sm">Người dùng</span>
               </button>
+
+              <button
+                onClick={() => onViewChange('DATABASE')}
+                className={`w-full flex items-center justify-between p-3.5 rounded-xl transition-all duration-200 border ${
+                  currentView === 'DATABASE'
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-900/40'
+                    : 'hover:bg-slate-800 hover:text-white border-transparent text-slate-400'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <i className="fa-solid fa-database w-5"></i>
+                  <span className="font-bold text-sm">Cơ sở dữ liệu</span>
+                </div>
+                {cloudActive && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_5px_#34d399]"></div>}
+              </button>
             </div>
           )}
         </nav>
@@ -85,7 +109,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, onLogout, currentView, onViewCh
 
       <div className="mt-auto p-6 bg-slate-950/40">
         <div className="flex items-center space-x-3 mb-6 p-1">
-          <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-blue-400 font-black shadow-inner">
+          <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-blue-400 font-black shadow-inner text-xs">
             {user.fullName.charAt(0)}
           </div>
           <div className="overflow-hidden">

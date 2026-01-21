@@ -1,87 +1,109 @@
 
 import { Ticket, Asset, User, SystemLog } from '../types';
 
+/**
+ * Tạo Script khởi tạo toàn bộ Database cho MySQL
+ */
 export const generateSQLSchema = (): string => {
-  return `
--- HELP DESK PRO: MYSQL DATABASE SCHEMA
--- Generated: ${new Date().toISOString()}
+  return `-- IT HELPDESK VCPC - MYSQL DATABASE INITIALIZATION
+-- Create Database
+CREATE DATABASE IF NOT EXISTS helpdesk_vcpc CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE helpdesk_vcpc;
 
-SET NAMES utf8mb4;
-SET FOREIGN_KEY_CHECKS = 0;
+-- 1. Table Users
+CREATE TABLE IF NOT EXISTS Users (
+    id VARCHAR(50) PRIMARY KEY,
+    username VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) DEFAULT '123',
+    fullName VARCHAR(255) NOT NULL,
+    role ENUM('ADMIN', 'USER') DEFAULT 'USER',
+    department VARCHAR(100),
+    subsidiary VARCHAR(50)
+) ENGINE=InnoDB;
 
--- ----------------------------
--- Table structure for Users
--- ----------------------------
-CREATE TABLE IF NOT EXISTS \`Users\` (
-  \`id\` varchar(50) NOT NULL,
-  \`username\` varchar(100) NOT NULL,
-  \`password\` varchar(255) DEFAULT '123',
-  \`fullName\` varchar(255) NOT NULL,
-  \`role\` enum('ADMIN','USER') DEFAULT 'USER',
-  \`department\` varchar(100) DEFAULT NULL,
-  \`subsidiary\` varchar(50) DEFAULT NULL,
-  PRIMARY KEY (\`id\`),
-  UNIQUE KEY \`uk_username\` (\`username\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- 2. Table Assets
+CREATE TABLE IF NOT EXISTS Assets (
+    id VARCHAR(50) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(100),
+    serialNumber VARCHAR(100),
+    status VARCHAR(50),
+    assignedToId VARCHAR(50),
+    assignedToName VARCHAR(255),
+    subsidiary VARCHAR(50),
+    department VARCHAR(100),
+    purchaseDate DATE,
+    value DECIMAL(15, 2) DEFAULT 0,
+    FOREIGN KEY (assignedToId) REFERENCES Users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
 
--- ----------------------------
--- Table structure for Assets
--- ----------------------------
-CREATE TABLE IF NOT EXISTS \`Assets\` (
-  \`id\` varchar(50) NOT NULL,
-  \`name\` varchar(255) NOT NULL,
-  \`type\` varchar(100) DEFAULT NULL,
-  \`serialNumber\` varchar(100) DEFAULT NULL,
-  \`status\` varchar(50) DEFAULT NULL,
-  \`assignedToId\` varchar(50) DEFAULT NULL,
-  \`assignedToName\` varchar(255) DEFAULT NULL,
-  \`subsidiary\` varchar(50) DEFAULT NULL,
-  \`department\` varchar(100) DEFAULT NULL,
-  \`purchaseDate\` date DEFAULT NULL,
-  \`value\` decimal(15,2) DEFAULT '0.00',
-  PRIMARY KEY (\`id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- 3. Table Tickets
+CREATE TABLE IF NOT EXISTS Tickets (
+    id VARCHAR(50) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL,
+    priority VARCHAR(50) NOT NULL,
+    category VARCHAR(100),
+    creatorId VARCHAR(50),
+    creatorName VARCHAR(255),
+    department VARCHAR(100),
+    subsidiary VARCHAR(50),
+    location VARCHAR(255),
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (creatorId) REFERENCES Users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- ----------------------------
--- Table structure for Tickets
--- ----------------------------
-CREATE TABLE IF NOT EXISTS \`Tickets\` (
-  \`id\` varchar(50) NOT NULL,
-  \`title\` varchar(255) NOT NULL,
-  \`description\` text,
-  \`status\` varchar(50) NOT NULL,
-  \`priority\` varchar(50) NOT NULL,
-  \`category\` varchar(100) DEFAULT NULL,
-  \`creatorId\` varchar(50) NOT NULL,
-  \`creatorName\` varchar(255) DEFAULT NULL,
-  \`department\` varchar(100) DEFAULT NULL,
-  \`subsidiary\` varchar(50) DEFAULT NULL,
-  \`location\` varchar(255) DEFAULT NULL,
-  \`createdAt\` datetime DEFAULT NULL,
-  \`updatedAt\` datetime DEFAULT NULL,
-  PRIMARY KEY (\`id\`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- 4. Table Comments (Lưu lịch sử trao đổi trong Ticket)
+CREATE TABLE IF NOT EXISTS Comments (
+    id VARCHAR(50) PRIMARY KEY,
+    ticketId VARCHAR(50),
+    senderId VARCHAR(50),
+    senderName VARCHAR(255),
+    senderRole VARCHAR(20),
+    message TEXT,
+    createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    isSystem BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (ticketId) REFERENCES Tickets(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
-SET FOREIGN_KEY_CHECKS = 1;
+-- 5. Table SystemLogs
+CREATE TABLE IF NOT EXISTS SystemLogs (
+    id VARCHAR(50) PRIMARY KEY,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    userId VARCHAR(50),
+    userName VARCHAR(255),
+    action VARCHAR(100),
+    details TEXT,
+    type VARCHAR(20)
+) ENGINE=InnoDB;
+
+-- Insert Default Admin
+REPLACE INTO Users (id, username, password, fullName, role, department, subsidiary) 
+VALUES ('u1', 'admin', '123', 'Quản Trị Viên', 'ADMIN', 'IT', 'VCPC');
 `;
 };
 
+/**
+ * Chuyển đổi dữ liệu từ LocalStorage sang SQL để di cư (Migration)
+ */
 export const generateSQLDataMigration = (data: {
   users: User[],
   assets: Asset[],
   tickets: Ticket[],
   logs: SystemLog[]
 }): string => {
-  let sql = `\n-- INITIAL DATA MIGRATION\n\n`;
-
+  let sql = `-- MIGRATION DATA\n`;
+  
   if (data.users.length > 0) {
-    sql += "REPLACE INTO `Users` (`id`, `username`, `password`, `fullName`, `role`, `department`, `subsidiary`) VALUES\n";
-    sql += data.users.map(u => `('${u.id}', '${u.username}', '${u.password || '123'}', '${u.fullName}', '${u.role}', '${u.department}', '${u.subsidiary}')`).join(",\n") + ";\n\n";
+    sql += "\n-- Users\nREPLACE INTO Users (id, username, password, fullName, role, department, subsidiary) VALUES\n";
+    sql += data.users.map(u => `('${u.id}', '${u.username}', '${u.password || '123'}', '${u.fullName}', '${u.role}', '${u.department}', '${u.subsidiary}')`).join(",\n") + ";\n";
   }
 
   if (data.assets.length > 0) {
-    sql += "REPLACE INTO `Assets` (`id`, \`name\`, \`type\`, \`serialNumber\`, \`status\`, \`assignedToId\`, \`assignedToName\`, \`subsidiary\`, \`department\`, \`purchaseDate\`, \`value\`) VALUES\n";
-    sql += data.assets.map(a => `('${a.id}', '${a.name.replace(/'/g, "''")}', '${a.type}', '${a.serialNumber}', '${a.status}', '${a.assignedToId || ''}', '${a.assignedToName || ''}', '${a.subsidiary}', '${a.department}', '${a.purchaseDate}', ${a.value})`).join(",\n") + ";\n\n";
+    sql += "\n-- Assets\nREPLACE INTO Assets (id, name, type, serialNumber, status, assignedToId, assignedToName, subsidiary, department, purchaseDate, value) VALUES\n";
+    sql += data.assets.map(a => `('${a.id}', '${a.name.replace(/'/g, "''")}', '${a.type}', '${a.serialNumber}', '${a.status}', ${a.assignedToId ? `'${a.assignedToId}'` : 'NULL'}, '${a.assignedToName || ''}', '${a.subsidiary}', '${a.department}', '${a.purchaseDate}', ${a.value})`).join(",\n") + ";\n";
   }
 
   return sql;
